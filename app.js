@@ -131,6 +131,7 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
     el.style.left = `${item.x}px`;
     el.style.top = `${item.y}px`;
     el.style.width = `${item.width}px`;
+    if (item.type === "note") el.style.height = `${item.height}px`;
     el.style.zIndex = item.z || 1;
 
     let img = null;
@@ -145,6 +146,54 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
         item.text = textArea.value;
         saveItem(item);
         expandBoard();
+      });
+
+      // Notes are editable, but dragging should still work when the user
+      // clicks and drags the text itself. A simple click remains a normal
+      // text-editing click; movement beyond the small threshold starts a drag.
+      textArea.addEventListener("pointerdown", event => {
+        if (event.button !== 0) return;
+        select(el);
+
+        const startX = event.clientX;
+        const startY = event.clientY;
+        const originalX = item.x;
+        const originalY = item.y;
+        let dragging = false;
+
+        const move = e => {
+          const dx = e.clientX - startX;
+          const dy = e.clientY - startY;
+
+          if (!dragging && Math.hypot(dx, dy) < 4) return;
+
+          if (!dragging) {
+            dragging = true;
+            e.preventDefault();
+            select(el);
+            item.z = ++zCounter;
+            el.style.zIndex = item.z;
+            textArea.setPointerCapture(event.pointerId);
+          }
+
+          e.preventDefault();
+          item.x = originalX + dx;
+          item.y = originalY + dy;
+          el.style.left = `${item.x}px`;
+          el.style.top = `${item.y}px`;
+          expandBoard();
+        };
+
+        const up = () => {
+          textArea.removeEventListener("pointermove", move);
+          textArea.removeEventListener("pointerup", up);
+          textArea.removeEventListener("pointercancel", up);
+          if (dragging) saveItem(item);
+        };
+
+        textArea.addEventListener("pointermove", move);
+        textArea.addEventListener("pointerup", up);
+        textArea.addEventListener("pointercancel", up);
       });
     } else {
       img = document.createElement("img");
@@ -369,8 +418,10 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
     el.classList.add("selected");
   }
 
-  board.addEventListener("pointerdown", event => {
-    if (event.target === board) {
+  document.addEventListener("pointerdown", event => {
+    // Any click/tap outside a board object clears its selection. This also
+    // guarantees that resize handles never remain stranded on the canvas.
+    if (!event.target.closest(".image-item, .note-item")) {
       document.querySelectorAll(".image-item.selected, .note-item.selected")
         .forEach(node => node.classList.remove("selected"));
     }
