@@ -16,21 +16,12 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
   let zCounter = 0;
   let saveQueue = Promise.resolve();
 
-  async function ensureSession() {
-    const { data: { session } } = await supabase.auth.getSession();
-    if (session) return session;
-    const { data, error } = await supabase.auth.signInAnonymously();
-    if (error) throw error;
-    return data.session;
-  }
 
   async function load() {
     try {
       if (!SUPABASE_URL || SUPABASE_URL.includes('PASTE_') || !SUPABASE_ANON_KEY || SUPABASE_ANON_KEY.includes('PASTE_')) {
         throw new Error('Supabase configuration is missing.');
       }
-
-      await ensureSession();
 
       const { data, error } = await supabase
         .from('board_items')
@@ -42,15 +33,14 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
       const items = data || [];
 
-      // Generate fresh signed URLs every time the board opens. The stored
-      // original is the Supabase Storage object, not a temporary URL.
+      // Images live in a public Supabase Storage bucket. This avoids
+      // temporary signed URLs expiring or failing before the board renders.
       for (const item of items) {
         if (item.storage_path) {
-          const { data: signed, error: signError } = await supabase.storage
+          const { data: publicUrl } = supabase.storage
             .from(STORAGE_BUCKET)
-            .createSignedUrl(item.storage_path, 60 * 60);
-          if (signError) throw signError;
-          item.src = signed.signedUrl;
+            .getPublicUrl(item.storage_path);
+          item.src = publicUrl.publicUrl;
         }
       }
 
@@ -113,11 +103,10 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
     if (error) throw error;
     if (saved.storage_path && !saved.src) {
-      const { data: signed, error: signError } = await supabase.storage
+      const { data: publicUrl } = supabase.storage
         .from(STORAGE_BUCKET)
-        .createSignedUrl(saved.storage_path, 60 * 60);
-      if (signError) throw signError;
-      saved.src = signed.signedUrl;
+        .getPublicUrl(saved.storage_path);
+      saved.src = publicUrl.publicUrl;
     }
 
     // Normalize Supabase snake_case to the names used by the renderer.
@@ -160,6 +149,7 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
       });
     } else {
       img = document.createElement("img");
+      img.crossOrigin = "anonymous";
       img.src = item.src;
       img.alt = "";
       img.draggable = false;
@@ -211,7 +201,8 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
       </svg>
     `;
 
-    controls.append(grayWrap, deleteButton, ageButton);
+    if (img) controls.append(grayWrap, deleteButton, ageButton);
+    else controls.append(deleteButton);
     if (textArea) el.append(textArea, handle, controls); else el.append(img, handle, controls);
     board.appendChild(el);
 
@@ -232,26 +223,27 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
     function applySaturation() {
       const g = item.grayscale || 0;
       if (img) img.style.filter = `grayscale(${g}%)`;
-      if (textArea) textArea.style.filter = item.aged ? `grayscale(${g}%) sepia(22%) contrast(96%)` : `grayscale(${g}%)`;
     }
 
-    function bringForward() {
+    el.addEventListener("pointerdown", event => {
+      if (event.target === handle ||
+          event.target === textArea ||
+          grayWrap.contains(event.target) ||
+          event.target === deleteButton ||
+          ageButton.contains(event.target)) return;
+
+      event.preventDefault();
       select(el);
       item.z = ++zCounter;
       el.style.zIndex = item.z;
-    }
-
-    function beginObjectDrag(event) {
-      event.preventDefault();
-      bringForward();
 
       const startX = event.clientX;
       const startY = event.clientY;
       const originalX = item.x;
       const originalY = item.y;
 
-      el.classList.add("dragging");
       el.setPointerCapture(event.pointerId);
+      el.classList.add("dragging");
 
       const move = e => {
         item.x = originalX + e.clientX - startX;
@@ -262,32 +254,22 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
       };
 
       const up = () => {
-        el.classList.remove("dragging");
         el.removeEventListener("pointermove", move);
         el.removeEventListener("pointerup", up);
+        el.classList.remove("dragging");
         saveItem(item);
       };
 
       el.addEventListener("pointermove", move);
       el.addEventListener("pointerup", up);
-    }
-
-    el.addEventListener("pointerdown", event => {
-      if (event.target === handle ||
-          event.target === textArea ||
-          grayWrap.contains(event.target) ||
-          event.target === deleteButton ||
-          ageButton.contains(event.target)) return;
-
-      beginObjectDrag(event);
     });
 
     if (textArea) {
       textArea.addEventListener("pointerdown", event => {
-        if (event.button !== undefined && event.button !== 0) return;
-
-        event.stopPropagation();
-        bringForward();
+        if (event.button !== 0) return;
+        select(el);
+        item.z = ++zCounter;
+        el.style.zIndex = item.z;
 
         const startX = event.clientX;
         const startY = event.clientY;
@@ -295,18 +277,16 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
         const originalY = item.y;
         let dragging = false;
 
+        textArea.setPointerCapture(event.pointerId);
+
         const move = e => {
           const dx = e.clientX - startX;
           const dy = e.clientY - startY;
-
-          if (!dragging && Math.hypot(dx, dy) >= 5) {
+          if (!dragging && Math.hypot(dx, dy) < 5) return;
+          if (!dragging) {
             dragging = true;
-            textArea.blur();
             el.classList.add("dragging");
           }
-
-          if (!dragging) return;
-
           e.preventDefault();
           item.x = originalX + dx;
           item.y = originalY + dy;
@@ -316,48 +296,49 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
         };
 
         const up = () => {
-          window.removeEventListener("pointermove", move, true);
-          window.removeEventListener("pointerup", up, true);
-
+          textArea.removeEventListener("pointermove", move);
+          textArea.removeEventListener("pointerup", up);
+          textArea.removeEventListener("pointercancel", up);
           if (dragging) {
             el.classList.remove("dragging");
             saveItem(item);
           }
         };
 
-        window.addEventListener("pointermove", move, true);
-        window.addEventListener("pointerup", up, true);
+        textArea.addEventListener("pointermove", move);
+        textArea.addEventListener("pointerup", up);
+        textArea.addEventListener("pointercancel", up);
       });
     }
 
     handle.addEventListener("pointerdown", event => {
       event.preventDefault();
       event.stopPropagation();
-      bringForward();
+      select(el);
+
+      item.z = ++zCounter;
+      el.style.zIndex = item.z;
 
       const startX = event.clientX;
       const startY = event.clientY;
       const startWidth = item.width;
-      const startHeight = item.height || el.getBoundingClientRect().height || 120;
+      const startHeight = item.height || 120;
       const ratio = startHeight / startWidth;
 
       handle.setPointerCapture(event.pointerId);
 
       const move = e => {
-        const dx = e.clientX - startX;
-        const dy = e.clientY - startY;
-
         if (item.type === "note") {
-          item.width = Math.max(80, startWidth + dx);
-          item.height = Math.max(48, startHeight + dy);
+          item.width = Math.max(80, startWidth + e.clientX - startX);
+          item.height = Math.max(48, startHeight + e.clientY - startY);
           el.style.width = `${item.width}px`;
           el.style.height = `${item.height}px`;
         } else {
-          item.width = Math.max(40, startWidth + dx);
-          item.height = item.width * ratio;
+          const newWidth = Math.max(40, startWidth + e.clientX - startX);
+          item.width = newWidth;
+          item.height = newWidth * ratio;
           el.style.width = `${item.width}px`;
         }
-
         expandBoard();
       };
 
@@ -371,19 +352,21 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
       handle.addEventListener("pointerup", up);
     });
 
-    grayButton.addEventListener("click", event => {
-      event.stopPropagation();
-      grayWrap.classList.toggle("open");
-    });
+    if (img) {
+      grayButton.addEventListener("click", event => {
+        event.stopPropagation();
+        grayWrap.classList.toggle("open");
+      });
 
-    grayInput.addEventListener("input", event => {
-      event.stopPropagation();
-      // 0 at the top = full original saturation.
-      // 100 at the bottom = completely grayscale.
-      item.grayscale = Number(grayInput.value);
-      applySaturation();
-      saveItem(item);
-    });
+      grayInput.addEventListener("input", event => {
+        event.stopPropagation();
+        // 0 at the top = full original saturation.
+        // 100 at the bottom = completely grayscale.
+        item.grayscale = Number(grayInput.value);
+        applySaturation();
+        saveItem(item);
+      });
+    }
 
     deleteButton.addEventListener("click", async event => {
       event.stopPropagation();
@@ -399,68 +382,62 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
         expandBoard();
       } catch (error) {
         console.error(error);
-        alert("The image could not be deleted. Nothing was removed.");
+        alert("That item could not be deleted. Nothing was removed.");
       }
     });
 
-    ageButton.addEventListener("click", async event => {
-      event.stopPropagation();
+    if (img) {
+      ageButton.addEventListener("click", async event => {
+        event.stopPropagation();
 
-      // True two-state toggle:
-      // first click = generate one random aging recipe from the pristine source;
-      // second click = remove the aging treatment and restore the uploaded image.
-      // The independent saturation setting is preserved.
-      ageButton.classList.add("working");
+        // True two-state toggle:
+        // first click = generate one random aging recipe from the pristine source;
+        // second click = remove the aging treatment and restore the uploaded image.
+        // The independent saturation setting is preserved.
+        ageButton.classList.add("working");
 
-      if (item.aged) {
-        item.aged = false;
-        item.ageSeed = null;
-        if (img) img.src = item.src;
-        applySaturation();
-      } else {
-        item.aged = true;
-        item.ageSeed = makeSeed();
-        if (img) await applyAging(item, img);
-        else applySaturation();
+        if (item.aged) {
+          item.aged = false;
+          item.ageSeed = null;
+          img.src = item.src;
+          applySaturation();
+        } else {
+          item.aged = true;
+          item.ageSeed = makeSeed();
+          await applyAging(item, img);
+        }
+
+        ageButton.classList.remove("working");
+        updateAgeButton();
+        saveItem(item);
+      });
+
+      function updateAgeButton() {
+        ageButton.title = item.aged ? "restore original" : "age photograph";
+        ageButton.setAttribute("aria-label", item.aged ? "Restore original photograph" : "Age photograph");
+        ageButton.classList.toggle("aged", !!item.aged);
       }
 
-      ageButton.classList.remove("working");
       updateAgeButton();
-      saveItem(item);
-    });
-
-    function updateAgeButton() {
-      ageButton.title = item.aged ? "restore original" : "age photograph";
-      ageButton.setAttribute("aria-label", item.aged ? "Restore original photograph" : "Age photograph");
-      ageButton.classList.toggle("aged", !!item.aged);
     }
-
-    updateAgeButton();
 
     controls.addEventListener("pointerdown", event => {
       event.stopPropagation();
     });
   }
 
-  function clearSelection() {
+  function select(el) {
     document.querySelectorAll(".image-item.selected, .note-item.selected")
       .forEach(node => node.classList.remove("selected"));
-  }
-
-  function select(el) {
-    clearSelection();
     el.classList.add("selected");
   }
 
   board.addEventListener("pointerdown", event => {
-    if (event.target === board) clearSelection();
-  });
-
-  document.addEventListener("pointerdown", event => {
-    if (!event.target.closest(".image-item, .note-item, .board-actions, .home-icon")) {
-      clearSelection();
+    if (event.target === board) {
+      document.querySelectorAll(".image-item.selected, .note-item.selected")
+        .forEach(node => node.classList.remove("selected"));
     }
-  }, true);
+  });
 
   const noteButton = document.getElementById("noteButton");
   if (noteButton) {
@@ -573,30 +550,17 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
       await new Promise(resolve => img.addEventListener("load", resolve, { once: true }));
     }
 
-    // Always build from the pristine uploaded source. Fetching it as a Blob
-    // keeps the canvas origin-clean so the randomized aging pass can safely
-    // read pixels and export the result even though Storage is on Supabase.
-    const response = await fetch(item.src, { mode: "cors" });
-    if (!response.ok) throw new Error(`Could not load the original photograph (${response.status}).`);
-    const blob = await response.blob();
-    const objectUrl = URL.createObjectURL(blob);
-
-    try {
-      const source = new Image();
-      source.src = objectUrl;
-      if (!source.complete || !source.naturalWidth) {
-        await new Promise((resolve, reject) => {
-          source.addEventListener("load", resolve, { once: true });
-          source.addEventListener("error", reject, { once: true });
-        });
-      }
-
-      const agedUrl = buildAgedImage(source, item.ageSeed);
-      img.src = agedUrl;
-      img.style.filter = `grayscale(${item.grayscale || 0}%)`;
-    } finally {
-      URL.revokeObjectURL(objectUrl);
+    // Always build from the pristine uploaded source.
+    const source = new Image();
+    source.crossOrigin = "anonymous";
+    source.src = item.src;
+    if (!source.complete || !source.naturalWidth) {
+      await new Promise(resolve => source.addEventListener("load", resolve, { once: true }));
     }
+
+    const agedUrl = buildAgedImage(source, item.ageSeed);
+    img.src = agedUrl;
+    img.style.filter = `grayscale(${item.grayscale || 0}%)`;
   }
 
   function buildAgedImage(img, seed) {
