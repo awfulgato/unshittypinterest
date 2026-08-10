@@ -82,11 +82,6 @@ body { min-height: 100vh; }
   display: block;
 }
 
-.image-item.selected .resize-handle,
-.note-item.selected .resize-handle {
-  display: block;
-}
-
 .control {
   border: 0;
   background: transparent;
@@ -121,7 +116,7 @@ body { min-height: 100vh; }
   background: transparent;
   border: 1px solid #888;
   cursor: nwse-resize;
-  display: none;
+  display: block;
   pointer-events: auto;
 }
 
@@ -331,7 +326,7 @@ body { min-height: 100vh; }
 .note-item { position: absolute; transform-origin: top left; user-select: none; touch-action: none; cursor: grab; color: #ddd; }
 .note-item:active { cursor: grabbing; }
 .note-text { display: block; width: 100%; height: 100%; resize: none; overflow: hidden; border: 0; outline: 0; background: transparent; color: #ddd; padding: 2px; margin: 0; font:  16px/1.25 'UnifrakturCook', 'Old English Text MT', 'UnifrakturMaguntia', serif; user-select: text; cursor: text; }
-.note-item .resize-handle { display: none; }
+.note-item .resize-handle { display: block; }
 
 /* Controls stay subtle on black boards. */
 .image-controls { color: #888; }
