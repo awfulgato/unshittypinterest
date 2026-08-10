@@ -87,6 +87,7 @@
   handwriting.className = 'wyf-section wyf-handwriting';
   ['passerby blue','guest','fivecoat','jane','bramble'].forEach((text,i) => {
     const a = link(text, `wyf-hand-${i}`, 'hand-link');
+    if (text === 'passerby blue') a.classList.add('passerby-blue');
     handwriting.appendChild(a);
   });
   home.appendChild(handwriting);

@@ -7,8 +7,12 @@
   <link rel="stylesheet" href="styles.css">
 </head>
 <body class="nav-page">
+  <a class="home-icon" href="index.html" aria-label="home" title="home">
+    <svg viewBox="0 0 16 16" aria-hidden="true">
+      <path d="M2.5 7.2 8 2.8l5.5 4.4v6H9.9V9.7H6.1v3.5H2.5z" fill="none" stroke="currentColor" stroke-width="1" stroke-linejoin="round"/>
+    </svg>
+  </a>
   <main class="nav-canvas" data-nav=""></main>
-  <a class="nav-home" href="index.html" aria-label="home">·</a>
   <script>
     const params = new URLSearchParams(location.search);
     const nav = params.get('nav') === 'wyf' ? 'wyf' : 'husbond';

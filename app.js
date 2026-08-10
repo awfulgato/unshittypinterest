@@ -16,12 +16,21 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
   let zCounter = 0;
   let saveQueue = Promise.resolve();
 
+  async function ensureSession() {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (session) return session;
+    const { data, error } = await supabase.auth.signInAnonymously();
+    if (error) throw error;
+    return data.session;
+  }
 
   async function load() {
     try {
       if (!SUPABASE_URL || SUPABASE_URL.includes('PASTE_') || !SUPABASE_ANON_KEY || SUPABASE_ANON_KEY.includes('PASTE_')) {
         throw new Error('Supabase configuration is missing.');
       }
+
+      await ensureSession();
 
       const { data, error } = await supabase
         .from('board_items')
@@ -33,14 +42,15 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
       const items = data || [];
 
-      // Images live in a public Supabase Storage bucket. This avoids
-      // temporary signed URLs expiring or failing before the board renders.
+      // Generate fresh signed URLs every time the board opens. The stored
+      // original is the Supabase Storage object, not a temporary URL.
       for (const item of items) {
         if (item.storage_path) {
-          const { data: publicUrl } = supabase.storage
+          const { data: signed, error: signError } = await supabase.storage
             .from(STORAGE_BUCKET)
-            .getPublicUrl(item.storage_path);
-          item.src = publicUrl.publicUrl;
+            .createSignedUrl(item.storage_path, 60 * 60);
+          if (signError) throw signError;
+          item.src = signed.signedUrl;
         }
       }
 
@@ -103,10 +113,11 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
     if (error) throw error;
     if (saved.storage_path && !saved.src) {
-      const { data: publicUrl } = supabase.storage
+      const { data: signed, error: signError } = await supabase.storage
         .from(STORAGE_BUCKET)
-        .getPublicUrl(saved.storage_path);
-      saved.src = publicUrl.publicUrl;
+        .createSignedUrl(saved.storage_path, 60 * 60);
+      if (signError) throw signError;
+      saved.src = signed.signedUrl;
     }
 
     // Normalize Supabase snake_case to the names used by the renderer.
@@ -131,6 +142,7 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
     el.style.left = `${item.x}px`;
     el.style.top = `${item.y}px`;
     el.style.width = `${item.width}px`;
+    if (item.type === "note") el.style.height = `${item.height || 120}px`;
     el.style.zIndex = item.z || 1;
 
     let img = null;
@@ -223,23 +235,22 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
       if (textArea) textArea.style.filter = item.aged ? `grayscale(${g}%) sepia(22%) contrast(96%)` : `grayscale(${g}%)`;
     }
 
-    el.addEventListener("pointerdown", event => {
-      if (event.target === handle ||
-          event.target === textArea ||
-          grayWrap.contains(event.target) ||
-          event.target === deleteButton ||
-          ageButton.contains(event.target)) return;
-
-      event.preventDefault();
+    function bringForward() {
       select(el);
       item.z = ++zCounter;
       el.style.zIndex = item.z;
+    }
+
+    function beginObjectDrag(event) {
+      event.preventDefault();
+      bringForward();
 
       const startX = event.clientX;
       const startY = event.clientY;
       const originalX = item.x;
       const originalY = item.y;
 
+      el.classList.add("dragging");
       el.setPointerCapture(event.pointerId);
 
       const move = e => {
@@ -251,6 +262,7 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
       };
 
       const up = () => {
+        el.classList.remove("dragging");
         el.removeEventListener("pointermove", move);
         el.removeEventListener("pointerup", up);
         saveItem(item);
@@ -258,27 +270,94 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
       el.addEventListener("pointermove", move);
       el.addEventListener("pointerup", up);
+    }
+
+    el.addEventListener("pointerdown", event => {
+      if (event.target === handle ||
+          event.target === textArea ||
+          grayWrap.contains(event.target) ||
+          event.target === deleteButton ||
+          ageButton.contains(event.target)) return;
+
+      beginObjectDrag(event);
     });
+
+    if (textArea) {
+      textArea.addEventListener("pointerdown", event => {
+        if (event.button !== undefined && event.button !== 0) return;
+
+        event.stopPropagation();
+        bringForward();
+
+        const startX = event.clientX;
+        const startY = event.clientY;
+        const originalX = item.x;
+        const originalY = item.y;
+        let dragging = false;
+
+        const move = e => {
+          const dx = e.clientX - startX;
+          const dy = e.clientY - startY;
+
+          if (!dragging && Math.hypot(dx, dy) >= 5) {
+            dragging = true;
+            textArea.blur();
+            el.classList.add("dragging");
+          }
+
+          if (!dragging) return;
+
+          e.preventDefault();
+          item.x = originalX + dx;
+          item.y = originalY + dy;
+          el.style.left = `${item.x}px`;
+          el.style.top = `${item.y}px`;
+          expandBoard();
+        };
+
+        const up = () => {
+          window.removeEventListener("pointermove", move, true);
+          window.removeEventListener("pointerup", up, true);
+
+          if (dragging) {
+            el.classList.remove("dragging");
+            saveItem(item);
+          }
+        };
+
+        window.addEventListener("pointermove", move, true);
+        window.addEventListener("pointerup", up, true);
+      });
+    }
 
     handle.addEventListener("pointerdown", event => {
       event.preventDefault();
       event.stopPropagation();
-      select(el);
-
-      item.z = ++zCounter;
-      el.style.zIndex = item.z;
+      bringForward();
 
       const startX = event.clientX;
+      const startY = event.clientY;
       const startWidth = item.width;
-      const ratio = item.height / item.width;
+      const startHeight = item.height || el.getBoundingClientRect().height || 120;
+      const ratio = startHeight / startWidth;
 
       handle.setPointerCapture(event.pointerId);
 
       const move = e => {
-        const newWidth = Math.max(40, startWidth + e.clientX - startX);
-        item.width = newWidth;
-        item.height = newWidth * ratio;
-        el.style.width = `${item.width}px`;
+        const dx = e.clientX - startX;
+        const dy = e.clientY - startY;
+
+        if (item.type === "note") {
+          item.width = Math.max(80, startWidth + dx);
+          item.height = Math.max(48, startHeight + dy);
+          el.style.width = `${item.width}px`;
+          el.style.height = `${item.height}px`;
+        } else {
+          item.width = Math.max(40, startWidth + dx);
+          item.height = item.width * ratio;
+          el.style.width = `${item.width}px`;
+        }
+
         expandBoard();
       };
 
@@ -363,18 +442,25 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
     });
   }
 
-  function select(el) {
+  function clearSelection() {
     document.querySelectorAll(".image-item.selected, .note-item.selected")
       .forEach(node => node.classList.remove("selected"));
+  }
+
+  function select(el) {
+    clearSelection();
     el.classList.add("selected");
   }
 
   board.addEventListener("pointerdown", event => {
-    if (event.target === board) {
-      document.querySelectorAll(".image-item.selected, .note-item.selected")
-        .forEach(node => node.classList.remove("selected"));
-    }
+    if (event.target === board) clearSelection();
   });
+
+  document.addEventListener("pointerdown", event => {
+    if (!event.target.closest(".image-item, .note-item, .board-actions, .home-icon")) {
+      clearSelection();
+    }
+  }, true);
 
   const noteButton = document.getElementById("noteButton");
   if (noteButton) {
@@ -487,16 +573,30 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
       await new Promise(resolve => img.addEventListener("load", resolve, { once: true }));
     }
 
-    // Always build from the pristine uploaded source.
-    const source = new Image();
-    source.src = item.src;
-    if (!source.complete || !source.naturalWidth) {
-      await new Promise(resolve => source.addEventListener("load", resolve, { once: true }));
-    }
+    // Always build from the pristine uploaded source. Fetching it as a Blob
+    // keeps the canvas origin-clean so the randomized aging pass can safely
+    // read pixels and export the result even though Storage is on Supabase.
+    const response = await fetch(item.src, { mode: "cors" });
+    if (!response.ok) throw new Error(`Could not load the original photograph (${response.status}).`);
+    const blob = await response.blob();
+    const objectUrl = URL.createObjectURL(blob);
 
-    const agedUrl = buildAgedImage(source, item.ageSeed);
-    img.src = agedUrl;
-    img.style.filter = `grayscale(${item.grayscale || 0}%)`;
+    try {
+      const source = new Image();
+      source.src = objectUrl;
+      if (!source.complete || !source.naturalWidth) {
+        await new Promise((resolve, reject) => {
+          source.addEventListener("load", resolve, { once: true });
+          source.addEventListener("error", reject, { once: true });
+        });
+      }
+
+      const agedUrl = buildAgedImage(source, item.ageSeed);
+      img.src = agedUrl;
+      img.style.filter = `grayscale(${item.grayscale || 0}%)`;
+    } finally {
+      URL.revokeObjectURL(objectUrl);
+    }
   }
 
   function buildAgedImage(img, seed) {
