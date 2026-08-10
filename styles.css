@@ -301,16 +301,16 @@ body { min-height: 100vh; }
 }
 .wyf-link { position: static; font-family: Arial, Helvetica, sans-serif; font-size: 15px; text-align: center; }
 .wyf-numbers {
-  top: 13%; bottom: auto; left: auto; right: 7%; width: 49%; height: auto;
+  top: 24%; bottom: auto; left: auto; right: 7%; width: 49%; height: auto;
   display: grid; grid-template-columns: repeat(21, 20px); column-gap: 5px;
   grid-auto-rows: 24px; align-items: center; justify-content: end; text-align: center;
 }
 .wyf-numbers .wyf-link { position: static; font-family: Arial, Helvetica, sans-serif; font-size: 15px; width: 20px; }
-.wyf-cyrillic { position: absolute; }
+.wyf-cyrillic { position: absolute; top: 34%; height: 12%; }
 .wyf-cyrillic .nav-link { position: absolute; font-size: 17px; }
-.wyf-runes { position: absolute; }
+.wyf-runes { position: absolute; top: 45%; height: 14%; }
 .rune-link { position: absolute; font-family: 'Noto Sans Runic', 'Segoe UI Symbol', serif; font-size: 17px; letter-spacing: .04em; }
-.wyf-handwriting { top: 62%; left: 57%; right: 8%; bottom: auto; height: 17%; display: flex; flex-direction: column; align-items: flex-end; justify-content: space-between; }
+.wyf-handwriting { top: 63%; left: 57%; right: 8%; bottom: auto; height: 17%; display: flex; flex-direction: column; align-items: flex-end; justify-content: space-between; }
 .hand-link { position: static; font-family: '18th Century Kurrent Text', '18th Century Kurrent', cursive; font-size: 21px; font-weight: 400; letter-spacing: .01em; }
 .wyf-shared { position: fixed; left: 50%; bottom: 5.5%; transform: translateX(-50%); font-size: 17px; }
 .nav-home { position: fixed; left: 14px; bottom: 12px; color: #444; text-decoration: none; font-size: 11px; }

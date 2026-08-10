@@ -10,26 +10,18 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
   const board = document.getElementById("board");
   const input = document.getElementById("fileInput");
+  const addImageButton = document.querySelector('.add-action input[type="file"]')?.closest('label');
 
   let state = { items: [] };
   let zCounter = 0;
   let saveQueue = Promise.resolve();
 
-  async function ensureSession() {
-    const { data: { session } } = await supabase.auth.getSession();
-    if (session) return session;
-    const { data, error } = await supabase.auth.signInAnonymously();
-    if (error) throw error;
-    return data.session;
-  }
 
   async function load() {
     try {
       if (!SUPABASE_URL || SUPABASE_URL.includes('PASTE_') || !SUPABASE_ANON_KEY || SUPABASE_ANON_KEY.includes('PASTE_')) {
         throw new Error('Supabase configuration is missing.');
       }
-
-      await ensureSession();
 
       const { data, error } = await supabase
         .from('board_items')
@@ -41,15 +33,14 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
       const items = data || [];
 
-      // Generate fresh signed URLs every time the board opens. The stored
-      // original is the Supabase Storage object, not a temporary URL.
+      // Images live in a public Supabase Storage bucket. This avoids
+      // temporary signed URLs expiring or failing before the board renders.
       for (const item of items) {
         if (item.storage_path) {
-          const { data: signed, error: signError } = await supabase.storage
+          const { data: publicUrl } = supabase.storage
             .from(STORAGE_BUCKET)
-            .createSignedUrl(item.storage_path, 60 * 60);
-          if (signError) throw signError;
-          item.src = signed.signedUrl;
+            .getPublicUrl(item.storage_path);
+          item.src = publicUrl.publicUrl;
         }
       }
 
@@ -112,11 +103,10 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
     if (error) throw error;
     if (saved.storage_path && !saved.src) {
-      const { data: signed, error: signError } = await supabase.storage
+      const { data: publicUrl } = supabase.storage
         .from(STORAGE_BUCKET)
-        .createSignedUrl(saved.storage_path, 60 * 60);
-      if (signError) throw signError;
-      saved.src = signed.signedUrl;
+        .getPublicUrl(saved.storage_path);
+      saved.src = publicUrl.publicUrl;
     }
 
     // Normalize Supabase snake_case to the names used by the renderer.
@@ -399,7 +389,7 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
         if (el) { el.focus(); el.select(); }
       } catch (error) {
         console.error(error);
-        alert("That note could not be added.");
+        alert(error?.message ? `That note could not be added.\n\n${error.message}` : 'That note could not be added.');
       }
     });
   }
@@ -412,7 +402,7 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
         await uploadImage(file);
       } catch (error) {
         console.error(error);
-        alert("That image could not be uploaded.");
+        alert(error?.message ? `That image could not be uploaded.\n\n${error.message}` : 'That image could not be uploaded.');
       }
     }
     input.value = "";

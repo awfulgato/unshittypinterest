@@ -10,8 +10,13 @@
   <main class="nav-canvas" data-nav=""></main>
   <a class="nav-home" href="index.html" aria-label="home">·</a>
   <script>
-    const p = new URLSearchParams(location.search);
-    document.querySelector('.nav-canvas').dataset.nav = p.get('nav') === 'wyf' ? 'wyf' : 'husbond';
+    const params = new URLSearchParams(location.search);
+    const nav = params.get('nav') === 'wyf' ? 'wyf' : 'husbond';
+    if (nav === 'wyf' && sessionStorage.getItem('wyf_unlocked') !== '1') {
+      window.location.replace('wyf.html');
+    } else {
+      document.querySelector('.nav-canvas').dataset.nav = nav;
+    }
   </script>
   <script src="nav.js"></script>
 </body>
