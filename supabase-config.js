@@ -1,5 +1,5 @@
 // Paste the values from Supabase here.
 // Supabase -> Project Settings -> API -> Project URL / Publishable (anon) key.
-export const SUPABASE_URL = 'PASTE_YOUR_SUPABASE_PROJECT_URL_HERE';
-export const SUPABASE_ANON_KEY = 'PASTE_YOUR_SUPABASE_PUBLISHABLE_KEY_HERE';
+export const SUPABASE_URL = 'https://bshkvgdebluhmuxjpbiw.supabase.co';
+export const SUPABASE_ANON_KEY = 'sb_publishable_tV6ipeRw37DyNTm2iBl17Q_YmaLScc_';
 export const STORAGE_BUCKET = 'board-images';
