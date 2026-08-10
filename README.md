@@ -2,21 +2,22 @@
 
 Static Vercel site + Supabase database/storage.
 
-## Before deploying
-Open `supabase-config.js` and replace the two placeholders with:
-- Supabase Project URL
-- Supabase Publishable (anon) key
+## Supabase (one-time)
+1. Open Supabase -> SQL Editor.
+2. Paste the entire `setup.sql`.
+3. Run it.
 
-The browser needs the publishable/anon key. Do NOT put a Supabase service-role key in this file.
+The script is safe to run again. It does not delete board rows or stored images.
 
-## Supabase once
-1. Supabase -> SQL Editor -> run `setup.sql`.
-2. Supabase -> Authentication -> Providers -> Anonymous Sign-Ins: enable it.
+## Deploy
+Upload/commit **all files in this folder** to the existing GitHub repository. Do not delete the repository.
 
-## Vercel
-Upload/commit every file in this folder, including `key.png`. Redeploy after changes.
+Required files: `index.html`, `nav.html`, `nav.js`, `board.html`, `app.js`, `styles.css`, `wyf.html`, `key.png`, `supabase-config.js`, `setup.sql`, `vercel.json`.
 
-## Navigation
-Home -> husbond or wyf.
-Wyf -> exact supplied key image -> password box -> `caeg` -> WYF navigation.
-Direct access to `nav.html?nav=wyf` is also gated by the session unlock.
+The supplied key PNG is embedded directly into `wyf.html`, so the WYF key does not depend on an external image path. `key.png` is also retained in the project.
+
+## Behavior
+- `+` opens the image picker and immediately uploads selected images to Supabase Storage.
+- `&` creates a text note.
+- Boards persist in Supabase.
+- WYF shows the exact supplied key image. Clicking it reveals only the password box. `caeg` unlocks WYF.
