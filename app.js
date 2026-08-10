@@ -16,12 +16,21 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
   let zCounter = 0;
   let saveQueue = Promise.resolve();
 
+  async function ensureSession() {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (session) return session;
+    const { data, error } = await supabase.auth.signInAnonymously();
+    if (error) throw error;
+    return data.session;
+  }
 
   async function load() {
     try {
       if (!SUPABASE_URL || SUPABASE_URL.includes('PASTE_') || !SUPABASE_ANON_KEY || SUPABASE_ANON_KEY.includes('PASTE_')) {
         throw new Error('Supabase configuration is missing.');
       }
+
+      await ensureSession();
 
       const { data, error } = await supabase
         .from('board_items')
@@ -33,14 +42,15 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
       const items = data || [];
 
-      // Images live in a public Supabase Storage bucket. This avoids
-      // temporary signed URLs expiring or failing before the board renders.
+      // Generate fresh signed URLs every time the board opens. The stored
+      // original is the Supabase Storage object, not a temporary URL.
       for (const item of items) {
         if (item.storage_path) {
-          const { data: publicUrl } = supabase.storage
+          const { data: signed, error: signError } = await supabase.storage
             .from(STORAGE_BUCKET)
-            .getPublicUrl(item.storage_path);
-          item.src = publicUrl.publicUrl;
+            .createSignedUrl(item.storage_path, 60 * 60);
+          if (signError) throw signError;
+          item.src = signed.signedUrl;
         }
       }
 
@@ -103,10 +113,11 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
     if (error) throw error;
     if (saved.storage_path && !saved.src) {
-      const { data: publicUrl } = supabase.storage
+      const { data: signed, error: signError } = await supabase.storage
         .from(STORAGE_BUCKET)
-        .getPublicUrl(saved.storage_path);
-      saved.src = publicUrl.publicUrl;
+        .createSignedUrl(saved.storage_path, 60 * 60);
+      if (signError) throw signError;
+      saved.src = signed.signedUrl;
     }
 
     // Normalize Supabase snake_case to the names used by the renderer.
@@ -131,7 +142,6 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
     el.style.left = `${item.x}px`;
     el.style.top = `${item.y}px`;
     el.style.width = `${item.width}px`;
-    if (item.type === "note") el.style.height = `${item.height}px`;
     el.style.zIndex = item.z || 1;
 
     let img = null;
@@ -146,54 +156,6 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
         item.text = textArea.value;
         saveItem(item);
         expandBoard();
-      });
-
-      // Notes are editable, but dragging should still work when the user
-      // clicks and drags the text itself. A simple click remains a normal
-      // text-editing click; movement beyond the small threshold starts a drag.
-      textArea.addEventListener("pointerdown", event => {
-        if (event.button !== 0) return;
-        select(el);
-
-        const startX = event.clientX;
-        const startY = event.clientY;
-        const originalX = item.x;
-        const originalY = item.y;
-        let dragging = false;
-
-        const move = e => {
-          const dx = e.clientX - startX;
-          const dy = e.clientY - startY;
-
-          if (!dragging && Math.hypot(dx, dy) < 4) return;
-
-          if (!dragging) {
-            dragging = true;
-            e.preventDefault();
-            select(el);
-            item.z = ++zCounter;
-            el.style.zIndex = item.z;
-            textArea.setPointerCapture(event.pointerId);
-          }
-
-          e.preventDefault();
-          item.x = originalX + dx;
-          item.y = originalY + dy;
-          el.style.left = `${item.x}px`;
-          el.style.top = `${item.y}px`;
-          expandBoard();
-        };
-
-        const up = () => {
-          textArea.removeEventListener("pointermove", move);
-          textArea.removeEventListener("pointerup", up);
-          textArea.removeEventListener("pointercancel", up);
-          if (dragging) saveItem(item);
-        };
-
-        textArea.addEventListener("pointermove", move);
-        textArea.addEventListener("pointerup", up);
-        textArea.addEventListener("pointercancel", up);
       });
     } else {
       img = document.createElement("img");
@@ -418,10 +380,8 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
     el.classList.add("selected");
   }
 
-  document.addEventListener("pointerdown", event => {
-    // Any click/tap outside a board object clears its selection. This also
-    // guarantees that resize handles never remain stranded on the canvas.
-    if (!event.target.closest(".image-item, .note-item")) {
+  board.addEventListener("pointerdown", event => {
+    if (event.target === board) {
       document.querySelectorAll(".image-item.selected, .note-item.selected")
         .forEach(node => node.classList.remove("selected"));
     }
