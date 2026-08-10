@@ -20,22 +20,67 @@ body { min-height: 100vh; }
 }
 
 .home-links {
-  display: flex;
-  gap: 28px;
+  display: grid;
+  grid-template-columns: 92px 62px;
+  column-gap: 28px;
+  align-items: center;
 }
 
-.home-links a {
+.home-slot {
+  position: relative;
+  display: block;
+  height: 28px;
   color: #888;
   text-decoration: none;
-  font-size: 16px;
   cursor: default;
+}
+
+.home-label {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  white-space: nowrap;
+  color: inherit;
+  font-size: 16px;
+  line-height: 1;
+}
+
+.husbond-label {
+  font-family: Arial, Helvetica, sans-serif;
+  letter-spacing: 0;
   transition: color .15s ease, letter-spacing .15s ease;
 }
-.home-links a:hover { color: #aaa; text-decoration: none; }
-.home-links .husbond-home:hover { letter-spacing: .055em; }
-.home-links .wyf-home:hover { font-family: '18th Century Kurrent Text', '18th Century Kurrent', cursive; font-size: 20px; }
 
-.home-links a:hover { text-decoration: none; }
+.husbond-home:hover .husbond-label {
+  color: #aaa;
+  letter-spacing: .055em;
+}
+
+.wyf-sans,
+.wyf-script {
+  transition: opacity .14s ease, color .14s ease;
+}
+
+.wyf-sans {
+  font-family: Arial, Helvetica, sans-serif;
+  opacity: 1;
+}
+
+.wyf-script {
+  font-family: '18th Century Kurrent Text', '18th Century Kurrent', cursive;
+  font-size: 20px;
+  opacity: 0;
+  color: #aaa;
+}
+
+.wyf-home:hover .wyf-sans {
+  opacity: 0;
+}
+
+.wyf-home:hover .wyf-script {
+  opacity: 1;
+}
 
 .board-page {
   background: #fff;
@@ -353,3 +398,19 @@ body { min-height: 100vh; }
 .home-icon:hover { color: #aaa; }
 .home-icon svg { width: 14px; height: 14px; display: block; fill: none; stroke: currentColor; stroke-width: 1.05; stroke-linecap: round; stroke-linejoin: round; }
 .passerby-blue:hover { color: #9BCFE3 !important; }
+
+
+/* Husbond heart layout control */
+.nav-canvas[data-nav="husbond"] .nav-link {
+  transition: left .28s ease, top .28s ease, transform .28s ease, color .12s ease;
+}
+.husbond-heart-toggle {
+  cursor: default;
+}
+.husbond-heart-toggle:hover,
+.husbond-heart-toggle[aria-pressed="true"] {
+  color: #c74747;
+}
+.nav-canvas.husbond-organized .nav-link:not(.husbond-heart-toggle) {
+  transform-origin: center;
+}

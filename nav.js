@@ -39,12 +39,75 @@
     husbondLatin.forEach(ch => links.push(link(ch, `husbond-${ch}`, 'nav-link')));
     ['1','2','3','4','5'].forEach(n => links.push(link(n, `husbond-${n}`,'nav-link numeral')));
     links.push(link('†','husbond-cross','nav-link symbol'));
-    links.push(link('♥','husbond-heart','nav-link symbol'));
+    const heart = link('♥','#','nav-link symbol husbond-heart-toggle');
+    heart.removeAttribute('href');
+    heart.setAttribute('role','button');
+    heart.setAttribute('aria-label','organize husbond links');
+    links.push(heart);
     husbondGreek.forEach((ch,i) => links.push(link(ch, `husbond-greek-${i}`,'nav-link greek')));
     husbondCyrillic.forEach((ch,i) => links.push(link(ch, `husbond-cyrillic-${i}`,'nav-link cyrillic')));
     links.push(link('道德经','husbond-taodejing','nav-link chinese'));
     links.push(link('无为','husbond-wuwei','nav-link chinese'));
+
     links.forEach((a,i) => { home.appendChild(a); placeRandom(a,i,links.length); });
+
+    const latinLinks = links.filter(a => /^husbond-[a-z]$/.test(a.dataset.board || ''));
+    const numeralLinks = links.filter(a => /^husbond-[1-5]$/.test(a.dataset.board || ''));
+    const chineseLinks = links.filter(a => (a.dataset.board || '') === 'husbond-taodejing' || (a.dataset.board || '') === 'husbond-wuwei');
+
+    let organized = false;
+
+    const scatter = () => {
+      organized = false;
+      home.classList.remove('husbond-organized');
+      links.forEach((a,i) => {
+        if (a === heart) return;
+        a.style.removeProperty('writing-mode');
+        a.style.removeProperty('text-orientation');
+        a.style.removeProperty('letter-spacing');
+        placeRandom(a,i,links.length);
+      });
+      placeRandom(heart, links.indexOf(heart), links.length);
+      heart.setAttribute('aria-pressed','false');
+    };
+
+    const organize = () => {
+      organized = true;
+      home.classList.add('husbond-organized');
+      heart.setAttribute('aria-pressed','true');
+
+      const sortedLatin = [...latinLinks].sort((a,b) => b.textContent.localeCompare(a.textContent));
+      const sortedNumerals = [...numeralLinks].sort((a,b) => Number(b.textContent) - Number(a.textContent));
+
+      sortedLatin.forEach((a,i) => {
+        a.style.left = '24%';
+        a.style.top = `${12 + i * 5.2}%`;
+        a.style.transform = 'translate(-50%, -50%)';
+      });
+
+      sortedNumerals.forEach((a,i) => {
+        a.style.left = '48%';
+        a.style.top = `${12 + i * 8.2}%`;
+        a.style.transform = 'translate(-50%, -50%)';
+      });
+
+      chineseLinks.forEach((a,i) => {
+        a.style.left = `${70 + i * 10}%`;
+        a.style.top = '12%';
+        a.style.transform = 'translate(-50%, 0)';
+        a.style.writingMode = 'vertical-rl';
+        a.style.textOrientation = 'upright';
+        a.style.letterSpacing = '.08em';
+      });
+    };
+
+    heart.addEventListener('click', event => {
+      event.preventDefault();
+      event.stopPropagation();
+      if (organized) scatter();
+      else organize();
+    });
+
     return;
   }
 
