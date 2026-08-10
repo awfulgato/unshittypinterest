@@ -3,78 +3,42 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>wyf</title>
+  <title>eskja</title>
+  <link rel="icon" type="image/png" href="favicon.png">
   <style>
-    html, body { margin:0; width:100%; height:100%; background:#000; color:#888; }
+    html, body { margin:0; width:100%; height:100%; background:#000; color:#fff; }
     body { min-height:100vh; overflow:hidden; position:relative; }
-    .key-link {
-      position:absolute; left:50%; top:48%; transform:translate(-50%,-50%);
-      width:58px; height:58px; display:flex; align-items:center; justify-content:center;
-      cursor:default; text-decoration:none; opacity:.88; transition:opacity .12s ease;
-    }
+    .key-link { position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); width:58px; height:58px; display:flex; align-items:center; justify-content:center; cursor:default; text-decoration:none; }
     .key-link img { width:58px; height:58px; object-fit:contain; display:block; }
-    .key-link:hover { opacity:1; }
-    .password-box {
-      position:absolute; left:50%; top:calc(48% + 66px); transform:translateX(-50%);
-      width:102px; height:30px; display:none;
-    }
+    .key-link:hover { opacity:.78; }
+    .password-box { position:absolute; left:50%; top:calc(50% + 68px); transform:translateX(-50%); display:none; width:112px; height:34px; }
     .password-box.visible { display:block; }
-    .password-line {
-      position:relative; width:100%; height:30px; border-bottom:1px solid #747474;
-      transition:border-color .12s ease;
-    }
-    .password-line:focus-within { border-bottom-color:#949494; }
-    .password-line input {
-      position:absolute; inset:0; width:100%; height:100%; box-sizing:border-box;
-      border:0; outline:0; background:transparent; color:transparent; caret-color:transparent;
-      padding:0; margin:0; font-size:16px; text-align:center;
-    }
-    .password-marks {
-      position:absolute; inset:0; display:flex; align-items:center; justify-content:center; gap:9px;
-      pointer-events:none;
-    }
-    .scratch-cross {
-      position:relative; width:7px; height:10px; opacity:0; transition:opacity .08s ease;
-    }
-    .scratch-cross.visible { opacity:1; }
-    .scratch-cross::before, .scratch-cross::after {
-      content:""; position:absolute; left:3px; top:0; width:1px; height:10px;
-      background:#8b8b8b; transform-origin:center;
-    }
-    .scratch-cross::before { transform:rotate(42deg); }
-    .scratch-cross::after  { transform:rotate(-48deg); }
-    .scratch-cross:nth-child(2)::before { transform:rotate(46deg) translateY(.2px); }
-    .scratch-cross:nth-child(2)::after  { transform:rotate(-44deg); height:9px; }
-    .scratch-cross:nth-child(3)::before { transform:rotate(40deg); height:9px; }
-    .scratch-cross:nth-child(3)::after  { transform:rotate(-50deg) translateY(.3px); }
-    .scratch-cross:nth-child(4)::before { transform:rotate(45deg); }
-    .scratch-cross:nth-child(4)::after  { transform:rotate(-46deg); height:9px; }
+    .password-box input { position:absolute; inset:0; width:112px; height:34px; box-sizing:border-box; border:0; border-bottom:1px solid #777; border-radius:0; background:transparent; color:transparent; caret-color:#8b8b8b; padding:0; outline:none; font:16px/1 Arial,Helvetica,sans-serif; }
+    .password-box input:focus { border-bottom-color:#969696; }
+    .password-crosses { position:absolute; left:0; right:0; bottom:8px; height:12px; display:flex; align-items:center; justify-content:center; gap:10px; pointer-events:none; }
+    .password-cross { position:relative; width:8px; height:10px; opacity:.82; }
+    .password-cross::before, .password-cross::after { content:""; position:absolute; left:3.5px; top:0; width:1px; height:10px; background:#858585; transform-origin:center; }
+    .password-cross::before { transform:rotate(42deg) translateX(-.2px); }
+    .password-cross::after { transform:rotate(-48deg) translateX(.3px); }
   </style>
 </head>
 <body>
   <a class="key-link" id="keyLink" href="#" aria-label="continue"><img src="key.png" alt="" aria-hidden="true"></a>
-  <div class="password-box" id="passwordBox">
-    <div class="password-line">
-      <input id="password" type="password" autocomplete="off" spellcheck="false" aria-label="password">
-      <div class="password-marks" aria-hidden="true">
-        <span class="scratch-cross"></span><span class="scratch-cross"></span><span class="scratch-cross"></span><span class="scratch-cross"></span>
-      </div>
-    </div>
-  </div>
+  <div class="password-box" id="passwordBox"><div class="password-crosses" id="passwordCrosses" aria-hidden="true"></div><input id="password" type="password" maxlength="4" autocomplete="off" spellcheck="false" aria-label="password"></div>
   <script>
     const keyLink=document.getElementById('keyLink');
     const passwordBox=document.getElementById('passwordBox');
     const password=document.getElementById('password');
-    const marks=[...document.querySelectorAll('.scratch-cross')];
-    const updateMarks=()=>marks.forEach((mark,i)=>mark.classList.toggle('visible',i<Math.min(password.value.length,4)));
-    keyLink.addEventListener('click',e=>{e.preventDefault();passwordBox.classList.add('visible');password.focus();updateMarks();});
-    password.addEventListener('input',updateMarks);
+    const passwordCrosses=document.getElementById('passwordCrosses');
+    const drawCrosses=()=>{ passwordCrosses.innerHTML=''; for(let i=0;i<Math.min(password.value.length,4);i++){ const mark=document.createElement('span'); mark.className='password-cross'; passwordCrosses.appendChild(mark); } };
+    password.addEventListener('input',drawCrosses);
+    keyLink.addEventListener('click',e=>{e.preventDefault();passwordBox.classList.add('visible');password.focus();});
     password.addEventListener('keydown',e=>{
       if(e.key==='Enter'){
         if(password.value==='caeg'){sessionStorage.setItem('wyf_unlocked','1');window.location.replace('nav.html?nav=wyf');}
-        else {password.value='';updateMarks();}
+        else {password.value='';drawCrosses();}
       }
-      if(e.key==='Escape'){passwordBox.classList.remove('visible');password.value='';updateMarks();}
+      if(e.key==='Escape'){passwordBox.classList.remove('visible');password.value='';drawCrosses();}
     });
   </script>
 </body>
