@@ -57,30 +57,57 @@ body { min-height: 100vh; }
   letter-spacing: .055em;
 }
 
-.wyf-sans,
-.wyf-script {
-  transition: opacity .14s ease, color .14s ease;
-}
-
 .wyf-sans {
   font-family: Arial, Helvetica, sans-serif;
   opacity: 1;
+  transition: opacity .16s ease, color .16s ease;
 }
 
-.wyf-script {
-  font-family: '18th Century Kurrent Text', '18th Century Kurrent', cursive;
-  font-size: 20px;
+.wyf-written {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 62px;
+  height: 30px;
+  transform: translate(-50%, -50%);
+  overflow: visible;
   opacity: 0;
-  color: #aaa;
+  pointer-events: none;
+}
+
+.wyf-stroke {
+  fill: none;
+  stroke: #aaa;
+  stroke-width: 1.15;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
 }
 
 .wyf-home:hover .wyf-sans {
   opacity: 0;
 }
 
-.wyf-home:hover .wyf-script {
+.wyf-home:hover .wyf-written {
   opacity: 1;
 }
+
+.wyf-home:hover .wyf-stroke-1 {
+  animation: write-wyf-1 .82s ease-out 0s forwards;
+}
+
+.wyf-home:hover .wyf-stroke-2 {
+  animation: write-wyf-2 .60s ease-out .78s forwards;
+}
+
+.wyf-home:hover .wyf-stroke-3 {
+  animation: write-wyf-3 .62s ease-out 1.38s forwards;
+}
+
+@keyframes write-wyf-1 { to { stroke-dashoffset: 0; } }
+@keyframes write-wyf-2 { to { stroke-dashoffset: 0; } }
+@keyframes write-wyf-3 { to { stroke-dashoffset: 0; } }
 
 .board-page {
   background: #fff;
@@ -413,4 +440,25 @@ body { min-height: 100vh; }
 }
 .nav-canvas.husbond-organized .nav-link:not(.husbond-heart-toggle) {
   transform-origin: center;
+}
+
+
+/* Expanded Husbond alphabet families */
+.nav-link.hebrew {
+  font-family: Arial, "Noto Sans Hebrew", "Times New Roman", serif;
+  direction: rtl;
+}
+
+.husbond-heart-toggle {
+  cursor: default;
+  user-select: none;
+}
+
+.husbond-heart-toggle:hover,
+.husbond-heart-toggle[aria-pressed="true"] {
+  color: #c74747;
+}
+
+.nav-canvas[data-nav="husbond"] .nav-link {
+  transition: left .34s ease, top .34s ease, transform .34s ease, color .12s ease;
 }

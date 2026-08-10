@@ -1,7 +1,22 @@
 (() => {
-  const husbondLatin = ['a','c','e','g','h','k','m','p','r','s','t','u','x'];
-  const husbondGreek = ['α','Β','γ','Δ','ζ','Θ','κ','Λ','μ','Π','σ','Ω'];
-  const husbondCyrillic = ['ж','Я','ф'];
+  const husbondLatin = 'abcdefghijklmnopqrstuvwxyz'.split('');
+
+  // Preserve the original Greek/Cyrillic indices so any existing boards keep
+  // pointing at exactly the same board IDs. New characters are appended.
+  const husbondGreek = ['α','Β','γ','Δ','ζ','Θ','κ','Λ','μ','Π','σ','Ω','ε','η','ν','φ','χ','ψ'];
+  const husbondGreekOrder = ['α','Β','γ','Δ','ε','ζ','η','Θ','κ','Λ','μ','ν','Π','σ','φ','χ','ψ','Ω'];
+
+  const husbondCyrillic = ['ж','Я','ф','а','б','д','к','м','р','у'];
+  const husbondCyrillicOrder = ['а','б','д','ж','к','м','р','у','ф','Я'];
+
+  const husbondHebrew = [
+    { label: 'ש', board: 'husbond-hebrew-shema' },
+    { label: 'ז', board: 'husbond-hebrew-zechariah' },
+    { label: 'אדם', board: 'husbond-hebrew-adam' },
+    { label: 'ר', board: 'husbond-hebrew-ruach' },
+    { label: 'א', board: 'husbond-hebrew-ahava' }
+  ];
+
   const wyfCyrillic = ['б','Д','й'];
 
   const rune = {
@@ -36,39 +51,75 @@
 
   if (type === 'husbond') {
     const links = [];
-    husbondLatin.forEach(ch => links.push(link(ch, `husbond-${ch}`, 'nav-link')));
-    ['1','2','3','4','5'].forEach(n => links.push(link(n, `husbond-${n}`,'nav-link numeral')));
-    links.push(link('†','husbond-cross','nav-link symbol'));
-    const heart = link('♥','#','nav-link symbol husbond-heart-toggle');
-    heart.removeAttribute('href');
+
+    husbondLatin.forEach(ch => links.push(link(ch, `husbond-${ch}`, 'nav-link latin')));
+    for (let n = 1; n <= 12; n++) links.push(link(String(n), `husbond-${n}`, 'nav-link numeral'));
+
+    const cross = link('†','husbond-cross','nav-link symbol');
+    links.push(cross);
+
+    const heart = document.createElement('a');
+    heart.className = 'nav-link symbol husbond-heart-toggle';
+    heart.textContent = '♥';
     heart.setAttribute('role','button');
     heart.setAttribute('aria-label','organize husbond links');
+    heart.setAttribute('aria-pressed','false');
+    heart.tabIndex = 0;
     links.push(heart);
+
     husbondGreek.forEach((ch,i) => links.push(link(ch, `husbond-greek-${i}`,'nav-link greek')));
     husbondCyrillic.forEach((ch,i) => links.push(link(ch, `husbond-cyrillic-${i}`,'nav-link cyrillic')));
+    husbondHebrew.forEach(({label, board}) => links.push(link(label, board, 'nav-link hebrew')));
+
     links.push(link('道德经','husbond-taodejing','nav-link chinese'));
     links.push(link('无为','husbond-wuwei','nav-link chinese'));
 
-    links.forEach((a,i) => { home.appendChild(a); placeRandom(a,i,links.length); });
+    links.forEach((a,i) => {
+      home.appendChild(a);
+      placeRandom(a,i,links.length);
+    });
 
-    const latinLinks = links.filter(a => /^husbond-[a-z]$/.test(a.dataset.board || ''));
-    const numeralLinks = links.filter(a => /^husbond-[1-5]$/.test(a.dataset.board || ''));
-    const chineseLinks = links.filter(a => (a.dataset.board || '') === 'husbond-taodejing' || (a.dataset.board || '') === 'husbond-wuwei');
+    const byClass = cls => links.filter(a => a.classList.contains(cls));
+    const latinLinks = byClass('latin');
+    const numeralLinks = byClass('numeral');
+    const greekLinks = byClass('greek');
+    const cyrillicLinks = byClass('cyrillic');
+    const hebrewLinks = byClass('hebrew');
+    const chineseLinks = byClass('chinese');
+
+    const greekRank = new Map(husbondGreekOrder.map((ch,i) => [ch, i]));
+    const cyrRank = new Map(husbondCyrillicOrder.map((ch,i) => [ch, i]));
 
     let organized = false;
+
+    const resetLinkPresentation = a => {
+      a.style.removeProperty('writing-mode');
+      a.style.removeProperty('text-orientation');
+      a.style.removeProperty('direction');
+      a.style.removeProperty('letter-spacing');
+      a.style.removeProperty('font-size');
+    };
 
     const scatter = () => {
       organized = false;
       home.classList.remove('husbond-organized');
       links.forEach((a,i) => {
-        if (a === heart) return;
-        a.style.removeProperty('writing-mode');
-        a.style.removeProperty('text-orientation');
-        a.style.removeProperty('letter-spacing');
+        resetLinkPresentation(a);
         placeRandom(a,i,links.length);
       });
-      placeRandom(heart, links.indexOf(heart), links.length);
       heart.setAttribute('aria-pressed','false');
+    };
+
+    const placeColumn = (items, left, top, bottom=8) => {
+      const count = Math.max(1, items.length);
+      const usable = 100 - top - bottom;
+      const step = count <= 1 ? 0 : usable / (count - 1);
+      items.forEach((a,i) => {
+        resetLinkPresentation(a);
+        a.style.left = `${left}%`;
+        a.style.top = `${top + step * i}%`;
+        a.style.transform = 'translate(-50%, -50%)';
+      });
     };
 
     const organize = () => {
@@ -76,36 +127,54 @@
       home.classList.add('husbond-organized');
       heart.setAttribute('aria-pressed','true');
 
-      const sortedLatin = [...latinLinks].sort((a,b) => b.textContent.localeCompare(a.textContent));
-      const sortedNumerals = [...numeralLinks].sort((a,b) => Number(b.textContent) - Number(a.textContent));
+      const sortedLatin = [...latinLinks].sort((a,b) => a.textContent.localeCompare(b.textContent, 'en'));
+      const sortedNumerals = [...numeralLinks].sort((a,b) => Number(a.textContent) - Number(b.textContent));
+      const sortedGreek = [...greekLinks].sort((a,b) => (greekRank.get(a.textContent) ?? 999) - (greekRank.get(b.textContent) ?? 999));
+      const sortedCyrillic = [...cyrillicLinks].sort((a,b) => (cyrRank.get(a.textContent) ?? 999) - (cyrRank.get(b.textContent) ?? 999));
 
-      sortedLatin.forEach((a,i) => {
-        a.style.left = '24%';
-        a.style.top = `${12 + i * 5.2}%`;
-        a.style.transform = 'translate(-50%, -50%)';
-      });
+      // Hebrew order is intentionally semantic, matching the requested family:
+      // Shema, Zechariah, Adam, ruach, ahava.
+      const sortedHebrew = husbondHebrew.map(({board}) => hebrewLinks.find(a => a.dataset.board === board)).filter(Boolean);
 
-      sortedNumerals.forEach((a,i) => {
-        a.style.left = '48%';
-        a.style.top = `${12 + i * 8.2}%`;
-        a.style.transform = 'translate(-50%, -50%)';
-      });
+      placeColumn(sortedLatin, 10, 7, 7);
+      placeColumn(sortedNumerals, 25, 10, 10);
+      placeColumn(sortedGreek, 40, 8, 8);
+      placeColumn(sortedCyrillic, 55, 10, 10);
+      placeColumn(sortedHebrew, 70, 13, 25);
 
+      // Traditional-looking vertical presentation for the two Chinese links.
       chineseLinks.forEach((a,i) => {
-        a.style.left = `${70 + i * 10}%`;
+        resetLinkPresentation(a);
+        a.style.left = `${83 + i * 5}%`;
         a.style.top = '12%';
         a.style.transform = 'translate(-50%, 0)';
         a.style.writingMode = 'vertical-rl';
         a.style.textOrientation = 'upright';
         a.style.letterSpacing = '.08em';
       });
+
+      // Keep the two sparse symbols together as the final family.
+      cross.style.left = '94%';
+      cross.style.top = '16%';
+      cross.style.transform = 'translate(-50%, -50%)';
+
+      heart.style.left = '94%';
+      heart.style.top = '26%';
+      heart.style.transform = 'translate(-50%, -50%)';
     };
 
-    heart.addEventListener('click', event => {
-      event.preventDefault();
-      event.stopPropagation();
+    const toggleOrganization = event => {
+      if (event) {
+        event.preventDefault();
+        event.stopPropagation();
+      }
       if (organized) scatter();
       else organize();
+    };
+
+    heart.addEventListener('click', toggleOrganization);
+    heart.addEventListener('keydown', event => {
+      if (event.key === 'Enter' || event.key === ' ') toggleOrganization(event);
     });
 
     return;
