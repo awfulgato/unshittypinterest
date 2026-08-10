@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>image board</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body class="board-page">
+  <main id="board" aria-label="Image board"></main>
+
+  <div class="board-actions">
+    <label class="add-action" title="add image" aria-label="add image">
+      <span>+</span>
+      <input id="fileInput" type="file" accept="image/*" multiple>
+    </label>
+    <button id="noteButton" class="add-action" type="button" title="add note" aria-label="add note">&amp;</button>
+  </div>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>
