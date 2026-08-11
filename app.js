@@ -4,658 +4,337 @@ import { SUPABASE_URL, SUPABASE_ANON_KEY, STORAGE_BUCKET } from './supabase-conf
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 (() => {
-  // Legacy URL/data vocabulary remains until the storeskja/eskja migration is complete.
   const params = new URLSearchParams(location.search);
-  const legacyBoardParam = params.get('board');
-  const legacyBoardName = /^[a-z0-9_-]{1,80}$/i.test(legacyBoardParam || '')
-    ? legacyBoardParam.toLowerCase()
-    : 'husbond';
+  const boardParam = params.get("board");
+  const boardName = /^[a-z0-9_-]{1,80}$/i.test(boardParam || "") ? boardParam.toLowerCase() : "husbond";
 
-  const eskja = document.getElementById('board');
-  const input = document.getElementById('fileInput');
-  let state = { things: [] };
+  const board = document.getElementById("board");
+  const input = document.getElementById("fileInput");
+  const addImageButton = document.querySelector('.add-action input[type="file"]')?.closest('label');
+
+  let state = { items: [] };
   let zCounter = 0;
   let saveQueue = Promise.resolve();
-  let activeAudibleElement = null;
-  let backgroundModelPromise = null;
 
-  async function ensureSession() {
-    const { data: { session } } = await supabase.auth.getSession();
-    if (session) return session;
-    const { data, error } = await supabase.auth.signInAnonymously();
-    if (error) throw error;
-    return data.session;
-  }
-
-  async function signedUrl(path) {
-    if (!path) return null;
-    const { data, error } = await supabase.storage.from(STORAGE_BUCKET).createSignedUrl(path, 60 * 60);
-    if (error) throw error;
-    return data.signedUrl;
-  }
-
-  function normalizeThing(row) {
-    row.storagePath = row.storage_path;
-    row.cutoutStoragePath = row.cutout_storage_path;
-    row.backgroundRemoved = !!row.background_removed;
-    row.mimeType = row.mime_type || '';
-    return row;
-  }
 
   async function load() {
     try {
       if (!SUPABASE_URL || SUPABASE_URL.includes('PASTE_') || !SUPABASE_ANON_KEY || SUPABASE_ANON_KEY.includes('PASTE_')) {
         throw new Error('Supabase configuration is missing.');
       }
-      await ensureSession();
 
       const { data, error } = await supabase
         .from('board_items')
         .select('*')
-        .eq('board', legacyBoardName)
+        .eq('board', boardName)
         .order('z', { ascending: true });
+
       if (error) throw error;
 
-      const things = data || [];
-      for (const thing of things) {
-        normalizeThing(thing);
-        if (thing.storagePath) thing.src = await signedUrl(thing.storagePath);
-        if (thing.cutoutStoragePath) thing.cutoutSrc = await signedUrl(thing.cutoutStoragePath);
+      const items = data || [];
+
+      // Images live in a public Supabase Storage bucket. This avoids
+      // temporary signed URLs expiring or failing before the board renders.
+      for (const item of items) {
+        if (item.storage_path) {
+          const { data: publicUrl } = supabase.storage
+            .from(STORAGE_BUCKET)
+            .getPublicUrl(item.storage_path);
+          item.src = publicUrl.publicUrl;
+        }
       }
 
-      state = { things };
-      zCounter = Math.max(0, ...things.map(thing => thing.z || 0));
+      items.forEach(item => { item.storagePath = item.storage_path; item.cutoutPath = item.cutout_path; item.cutoutEnabled = !!item.cutout_enabled; });
+      state = { items };
+      zCounter = Math.max(0, ...state.items.map(item => item.z || 0));
       renderAll();
     } catch (error) {
       console.error(error);
-      eskja.innerHTML = '';
+      board.innerHTML = '';
       const message = document.createElement('div');
       message.className = 'board-error';
-      message.textContent = 'Could not load the eskja. Refresh and try again.';
+      message.textContent = 'Could not load the board. Refresh and try again.';
       document.body.appendChild(message);
     }
   }
 
-  function saveThing(thing) {
+  function saveItem(item) {
     saveQueue = saveQueue.then(async () => {
       const { error } = await supabase
         .from('board_items')
         .update({
-          x: thing.x,
-          y: thing.y,
-          width: thing.width,
-          height: thing.height,
-          grayscale: thing.grayscale || 0,
-          text: thing.text || '',
-          z: thing.z || 1,
-          mime_type: thing.mimeType || null,
-          cutout_storage_path: thing.cutoutStoragePath || null,
-          background_removed: !!thing.backgroundRemoved
+          x: item.x, y: item.y, width: item.width, height: item.height,
+          grayscale: item.grayscale || 0,
+          cutout_path: item.cutoutPath || null,
+          cutout_enabled: !!item.cutoutEnabled,
+          text: item.text || '',
+          z: item.z || 1
         })
-        .eq('id', thing.id)
-        .eq('board', legacyBoardName);
+        .eq('id', item.id)
+        .eq('board', boardName);
       if (error) throw error;
     }).catch(error => console.error(error));
     return saveQueue;
   }
 
-  async function addThing(data) {
-    const thing = {
-      id: data.id || crypto.randomUUID(),
-      board: legacyBoardName,
+  async function addItem(data) {
+    const item = {
+      id: data.id || (crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`),
+      board: boardName,
       type: data.type || 'image',
-      src: null,
+      src: data.src || null,
       storage_path: data.storagePath || null,
-      cutout_storage_path: null,
-      background_removed: false,
-      mime_type: data.mimeType || null,
       x: data.x,
       y: data.y,
       width: data.width,
       height: data.height,
       grayscale: 0,
-      aged: false,
-      age_seed: null,
+      cutout_path: data.cutoutPath || null,
+      cutout_enabled: !!data.cutoutEnabled,
       text: data.text || '',
       z: ++zCounter
     };
 
-    const { data: saved, error } = await supabase.from('board_items').insert(thing).select('*').single();
+    const { data: saved, error } = await supabase
+      .from('board_items')
+      .insert(item)
+      .select('*')
+      .single();
+
     if (error) throw error;
-    normalizeThing(saved);
-    if (saved.storagePath) saved.src = await signedUrl(saved.storagePath);
-    state.things.push(saved);
-    renderThing(saved);
-    expandEskja();
+    if (saved.storage_path && !saved.src) {
+      const { data: publicUrl } = supabase.storage
+        .from(STORAGE_BUCKET)
+        .getPublicUrl(saved.storage_path);
+      saved.src = publicUrl.publicUrl;
+    }
+
+    // Normalize Supabase snake_case to the names used by the renderer.
+    saved.storagePath = saved.storage_path;
+    saved.cutoutPath = saved.cutout_path; saved.cutoutEnabled = !!saved.cutout_enabled;
+    state.items.push(saved);
+    renderItem(saved);
+    expandBoard();
   }
 
   function renderAll() {
-    eskja.innerHTML = '';
-    state.things.forEach(renderThing);
-    expandEskja();
+    board.innerHTML = "";
+    state.items.forEach(renderItem);
+    expandBoard();
   }
 
-  function renderThing(thing) {
-    const type = ['image', 'note', 'audio', 'video'].includes(thing.type) ? thing.type : 'image';
+  const audibleMedia = new Set();
+  let backgroundSegmenterPromise = null;
+
+  function stopOtherMedia(except) {
+    for (const media of audibleMedia) {
+      if (media !== except && !media.paused) media.pause();
+    }
+  }
+
+  async function getBackgroundSegmenter() {
+    if (!backgroundSegmenterPromise) {
+      backgroundSegmenterPromise = import('https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.8.1/+esm')
+        .then(({ pipeline }) => pipeline('background-removal', 'Ko033/isnet-general-use-onnx', { dtype: 'q8' }));
+    }
+    return backgroundSegmenterPromise;
+  }
+
+  async function createCutoutBlob(src) {
+    const segmenter = await getBackgroundSegmenter();
+    const output = await segmenter(src);
+    return await output[0].toBlob();
+  }
+
+  function makePlayGlyph() {
+    return `<span class="media-rings"><span class="media-ring ring-a"></span><span class="media-ring ring-b"></span><span class="media-symbol">▷</span></span>`;
+  }
+
+  function makePauseGlyph() {
+    return `<span class="media-rings"><span class="media-ring ring-a"></span><span class="media-ring ring-b"></span><span class="media-symbol isa">ᛁ</span></span>`;
+  }
+
+  function renderItem(item) {
+    const isNote = item.type === 'note';
+    const isAudio = item.type === 'audio';
+    const isVideo = item.type === 'video';
+    const isImage = !isNote && !isAudio && !isVideo;
+
     const el = document.createElement('div');
-    el.className = `${type}-item thing-item`;
-    el.dataset.id = thing.id;
-    el.style.left = `${thing.x}px`;
-    el.style.top = `${thing.y}px`;
-    el.style.width = `${thing.width}px`;
-    el.style.height = `${thing.height}px`;
-    el.style.zIndex = thing.z || 1;
+    el.className = isNote ? 'note-item object-item' : isAudio ? 'audio-item media-item' : isVideo ? 'video-item media-item' : 'image-item';
+    el.dataset.id = item.id;
+    el.style.left = `${item.x}px`; el.style.top = `${item.y}px`; el.style.width = `${item.width}px`;
+    if (isNote || isAudio) el.style.height = `${item.height || (isAudio ? 62 : 120)}px`;
+    el.style.zIndex = item.z || 1;
 
-    let media = null;
-    let textArea = null;
-
-    if (type === 'note') {
-      textArea = document.createElement('textarea');
-      textArea.className = 'note-text';
-      textArea.value = thing.text || '';
-      textArea.placeholder = '';
-      textArea.spellcheck = false;
-      textArea.addEventListener('input', () => {
-        thing.text = textArea.value;
-        saveThing(thing);
-        expandEskja();
-      });
+    let img=null, textArea=null, media=null, video=null;
+    if (isNote) {
+      textArea=document.createElement('textarea'); textArea.className='note-text'; textArea.value=item.text||''; textArea.spellcheck=false;
+      textArea.addEventListener('input',()=>{item.text=textArea.value; saveItem(item); expandBoard();});
       el.appendChild(textArea);
-    } else if (type === 'image') {
-      media = document.createElement('img');
-      media.alt = '';
-      media.draggable = false;
-      media.src = thing.backgroundRemoved && thing.cutoutSrc ? thing.cutoutSrc : thing.src;
-      media.addEventListener('load', applySaturation, { once: true });
-      el.appendChild(media);
-    } else if (type === 'audio') {
-      media = document.createElement('audio');
-      media.src = thing.src;
-      media.preload = 'metadata';
-      media.hidden = true;
-      el.appendChild(media);
-      el.appendChild(makeAudioTransport(media, thing, el));
-    } else if (type === 'video') {
-      media = document.createElement('video');
-      media.src = thing.src;
-      media.preload = 'metadata';
-      media.playsInline = true;
-      media.controls = false;
-      media.draggable = false;
-      media.addEventListener('loadedmetadata', applySaturation, { once: true });
-      el.appendChild(media);
-      el.appendChild(makeVideoTransport(media, thing, el));
+    } else if (isAudio) {
+      media=document.createElement('audio'); media.src=item.src; media.preload='metadata'; audibleMedia.add(media);
+      const shell=document.createElement('div'); shell.className='audio-shell';
+      const play=document.createElement('button'); play.className='media-play'; play.type='button'; play.innerHTML=makePlayGlyph();
+      shell.append(play); el.append(shell,media);
+      const sync=()=>{ play.innerHTML=media.paused?makePlayGlyph():makePauseGlyph(); shell.classList.toggle('playing',!media.paused); };
+      play.addEventListener('click',e=>{e.stopPropagation(); if(media.paused){stopOtherMedia(media);media.play();}else media.pause();});
+      media.addEventListener('play',sync); media.addEventListener('pause',sync); media.addEventListener('ended',sync); sync();
+    } else if (isVideo) {
+      media=video=document.createElement('video'); video.src=item.src; video.preload='metadata'; video.playsInline=true; audibleMedia.add(video);
+      el.appendChild(video);
+      const bar=document.createElement('div'); bar.className='video-controls';
+      const play=document.createElement('button'); play.className='media-play video-play'; play.type='button'; play.innerHTML=makePlayGlyph();
+      const track=document.createElement('input'); track.className='video-track'; track.type='range'; track.min='0'; track.max='1000'; track.value='0';
+      bar.append(play,track); el.appendChild(bar);
+      const sync=()=>{play.innerHTML=video.paused?makePlayGlyph():makePauseGlyph(); el.classList.toggle('playing',!video.paused);};
+      play.addEventListener('click',e=>{e.stopPropagation(); if(video.paused){stopOtherMedia(video);video.play();}else video.pause();});
+      video.addEventListener('timeupdate',()=>{if(video.duration)track.value=String(Math.round(video.currentTime/video.duration*1000));});
+      track.addEventListener('input',e=>{e.stopPropagation(); if(video.duration)video.currentTime=Number(track.value)/1000*video.duration;});
+      video.addEventListener('play',sync); video.addEventListener('pause',sync); video.addEventListener('ended',sync); sync();
+    } else {
+      img=document.createElement('img'); img.crossOrigin='anonymous'; img.src=item.src; img.alt=''; img.draggable=false; el.appendChild(img);
     }
 
-    const handle = document.createElement('div');
-    handle.className = 'resize-handle';
-    el.appendChild(handle);
+    const handle=document.createElement('div'); handle.className='resize-handle';
+    const controls=document.createElement('div'); controls.className='image-controls';
+    const deleteButton=document.createElement('button'); deleteButton.type='button'; deleteButton.className='control delete-control'; deleteButton.textContent='×'; deleteButton.title='delete';
 
-    const controls = document.createElement('div');
-    controls.className = 'image-controls';
-
-    const deleteButton = document.createElement('button');
-    deleteButton.type = 'button';
-    deleteButton.className = 'control delete-control';
-    deleteButton.textContent = '×';
-    deleteButton.title = 'delete';
-    deleteButton.setAttribute('aria-label', 'delete');
-    controls.appendChild(deleteButton);
-
-    let grayWrap = null;
-    if (type === 'image' || type === 'video') {
-      grayWrap = makeSaturationControl();
-      controls.appendChild(grayWrap.wrap);
+    let grayWrap=null,grayInput=null,cutoutButton=null;
+    if (isImage || isVideo) {
+      grayWrap=document.createElement('div'); grayWrap.className='gray-wrap';
+      const grayButton=document.createElement('button'); grayButton.type='button'; grayButton.className='control gray-button'; grayButton.textContent='○'; grayButton.title='saturation';
+      const slider=document.createElement('div'); slider.className='gray-slider';
+      grayInput=document.createElement('input'); grayInput.type='range'; grayInput.min='0'; grayInput.max='100'; grayInput.value=String(item.grayscale||0);
+      slider.append(grayInput); grayWrap.append(grayButton,slider); controls.append(grayWrap);
+      grayButton.addEventListener('click',e=>{e.stopPropagation();grayWrap.classList.toggle('open');});
+      grayInput.addEventListener('input',e=>{e.stopPropagation();item.grayscale=Number(grayInput.value);applySaturation();saveItem(item);});
     }
+    controls.append(deleteButton);
 
-    let cutoutButton = null;
-    if (type === 'image' && isStaticImage(thing)) {
-      cutoutButton = makeCutoutButton();
-      controls.appendChild(cutoutButton);
-    }
-
-    el.appendChild(controls);
-    eskja.appendChild(el);
-    applySaturation();
-
-    function applySaturation() {
-      if (!media || (type !== 'image' && type !== 'video')) return;
-      media.style.filter = `grayscale(${thing.grayscale || 0}%)`;
-    }
-
-    function makeSaturationControl() {
-      const wrap = document.createElement('div');
-      wrap.className = 'gray-wrap';
-      const button = document.createElement('button');
-      button.type = 'button';
-      button.className = 'control gray-button';
-      button.textContent = '○';
-      button.title = 'saturation';
-      const slider = document.createElement('div');
-      slider.className = 'gray-slider';
-      const range = document.createElement('input');
-      range.type = 'range';
-      range.min = '0';
-      range.max = '100';
-      range.value = String(thing.grayscale || 0);
-      range.setAttribute('aria-label', 'Saturation reduction');
-      slider.appendChild(range);
-      wrap.append(button, slider);
-      button.addEventListener('click', event => {
-        event.stopPropagation();
-        wrap.classList.toggle('open');
-      });
-      range.addEventListener('input', event => {
-        event.stopPropagation();
-        thing.grayscale = Number(range.value);
-        applySaturation();
-        saveThing(thing);
-      });
-      return { wrap, range };
-    }
-
-    function makeCutoutButton() {
-      const button = document.createElement('button');
-      button.type = 'button';
-      button.className = 'control cutout-button';
-      button.title = thing.backgroundRemoved ? 'restore background' : 'remove background';
-      button.setAttribute('aria-label', button.title);
-      button.innerHTML = `
-        <svg viewBox="0 0 22 20" aria-hidden="true">
-          <path d="M3.5 3.3 8 1.9l4.2 2.3 1.2 4.5-2.4 3.8-4.6.7-3.3-2.8-.7-4.3Z"
-                fill="none" stroke="currentColor" stroke-width="1.15" stroke-linejoin="round"/>
-          <path d="m10.8 8.1 4-1.1 3.8 2.1 1 4-2.2 3.4-4 .6-3-2.4-.6-3.5Z" fill="currentColor"/>
-        </svg>`;
-      button.classList.toggle('active', !!thing.backgroundRemoved);
-      button.addEventListener('click', async event => {
-        event.stopPropagation();
-        if (button.classList.contains('working')) return;
-        button.classList.add('working');
+    if (isImage) {
+      cutoutButton=document.createElement('button'); cutoutButton.type='button'; cutoutButton.className='control cutout-button'; cutoutButton.title='remove background';
+      cutoutButton.innerHTML='<span class="stone rear"></span><span class="stone front"></span>'; controls.append(cutoutButton);
+      const refreshCutout=async()=>{
+        cutoutButton.classList.toggle('active',!!item.cutoutEnabled);
+        if(item.cutoutEnabled && item.cutoutPath){ const {data}=supabase.storage.from(STORAGE_BUCKET).getPublicUrl(item.cutoutPath); img.src=data.publicUrl; } else img.src=item.src;
+      };
+      cutoutButton.addEventListener('click',async e=>{
+        e.stopPropagation();
         try {
-          if (thing.backgroundRemoved) {
-            thing.backgroundRemoved = false;
-            media.src = thing.src;
-          } else {
-            if (!thing.cutoutSrc) await buildAndStoreCutout(thing);
-            thing.backgroundRemoved = true;
-            media.src = thing.cutoutSrc;
+          cutoutButton.classList.add('working');
+          if (!item.cutoutPath) {
+            const blob=await createCutoutBlob(item.src);
+            const path=`${boardName}/${item.id}-cutout.png`;
+            const {error}=await supabase.storage.from(STORAGE_BUCKET).upload(path,blob,{contentType:'image/png',upsert:true}); if(error)throw error;
+            item.cutoutPath=path;
           }
-          applySaturation();
-          button.classList.toggle('active', !!thing.backgroundRemoved);
-          button.title = thing.backgroundRemoved ? 'restore background' : 'remove background';
-          button.setAttribute('aria-label', button.title);
-          await saveThing(thing);
-        } catch (error) {
-          console.error(error);
-          alert(error?.message ? `The background could not be removed.\n\n${error.message}` : 'The background could not be removed.');
-        } finally {
-          button.classList.remove('working');
-        }
+          item.cutoutEnabled=!item.cutoutEnabled; await refreshCutout(); await saveItem(item);
+        } catch(err){console.error(err);alert('Background removal failed. Try again.');}
+        finally{cutoutButton.classList.remove('working');}
       });
-      return button;
+      refreshCutout();
     }
 
-    el.addEventListener('pointerdown', event => {
-      if (event.target === handle ||
-          event.target === textArea ||
-          event.target.closest('button') ||
-          event.target.closest('.gray-slider') ||
-          event.target.closest('.video-timeline')) return;
+    el.append(handle,controls); board.appendChild(el); applySaturation();
+    function applySaturation(){const g=item.grayscale||0;if(img)img.style.filter=`grayscale(${g}%)`;if(video)video.style.filter=`grayscale(${g}%)`;}
 
-      event.preventDefault();
-      select(el);
-      thing.z = ++zCounter;
-      el.style.zIndex = thing.z;
-      el.classList.add('dragging');
-
-      const startX = event.clientX;
-      const startY = event.clientY;
-      const originalX = thing.x;
-      const originalY = thing.y;
-      el.setPointerCapture(event.pointerId);
-
-      const move = e => {
-        thing.x = originalX + e.clientX - startX;
-        thing.y = originalY + e.clientY - startY;
-        el.style.left = `${thing.x}px`;
-        el.style.top = `${thing.y}px`;
-        expandEskja();
-      };
-      const up = () => {
-        el.classList.remove('dragging');
-        el.removeEventListener('pointermove', move);
-        el.removeEventListener('pointerup', up);
-        el.removeEventListener('pointercancel', up);
-        saveThing(thing);
-      };
-      el.addEventListener('pointermove', move);
-      el.addEventListener('pointerup', up);
-      el.addEventListener('pointercancel', up);
+    const interactiveTarget=e=> e.target===handle || e.target===textArea || (grayWrap&&grayWrap.contains(e.target)) || e.target===deleteButton || (cutoutButton&&cutoutButton.contains(e.target)) || e.target.closest?.('.media-play,.video-track');
+    el.addEventListener('pointerdown',event=>{
+      if(interactiveTarget(event))return; event.preventDefault(); select(el); item.z=++zCounter;el.style.zIndex=item.z;
+      const sx=event.clientX,sy=event.clientY,ox=item.x,oy=item.y; el.setPointerCapture(event.pointerId);el.classList.add('dragging');
+      const move=e=>{item.x=ox+e.clientX-sx;item.y=oy+e.clientY-sy;el.style.left=`${item.x}px`;el.style.top=`${item.y}px`;expandBoard();};
+      const up=()=>{el.removeEventListener('pointermove',move);el.removeEventListener('pointerup',up);el.classList.remove('dragging');saveItem(item);};
+      el.addEventListener('pointermove',move);el.addEventListener('pointerup',up);
     });
 
-    handle.addEventListener('pointerdown', event => {
-      event.preventDefault();
-      event.stopPropagation();
-      select(el);
-      thing.z = ++zCounter;
-      el.style.zIndex = thing.z;
-      const startX = event.clientX;
-      const startWidth = thing.width;
-      const ratio = (thing.height || el.offsetHeight || 1) / Math.max(1, thing.width);
-      handle.setPointerCapture(event.pointerId);
-      const move = e => {
-        const newWidth = Math.max(type === 'audio' ? 64 : 40, startWidth + e.clientX - startX);
-        thing.width = newWidth;
-        thing.height = newWidth * ratio;
-        el.style.width = `${thing.width}px`;
-        el.style.height = `${thing.height}px`;
-        expandEskja();
-      };
-      const up = () => {
-        handle.removeEventListener('pointermove', move);
-        handle.removeEventListener('pointerup', up);
-        saveThing(thing);
-      };
-      handle.addEventListener('pointermove', move);
-      handle.addEventListener('pointerup', up);
+    handle.addEventListener('pointerdown',event=>{
+      event.preventDefault();event.stopPropagation();select(el);const sx=event.clientX,sy=event.clientY,sw=item.width,sh=item.height||120;const ratio=sh/sw;handle.setPointerCapture(event.pointerId);
+      const move=e=>{if(isNote||isAudio){item.width=Math.max(80,sw+e.clientX-sx);item.height=Math.max(48,sh+e.clientY-sy);el.style.width=`${item.width}px`;el.style.height=`${item.height}px`;}else{item.width=Math.max(80,sw+e.clientX-sx);item.height=item.width*ratio;el.style.width=`${item.width}px`;}expandBoard();};
+      const up=()=>{handle.removeEventListener('pointermove',move);handle.removeEventListener('pointerup',up);saveItem(item);};handle.addEventListener('pointermove',move);handle.addEventListener('pointerup',up);
     });
 
-    deleteButton.addEventListener('click', async event => {
-      event.stopPropagation();
-      try {
-        if (activeAudibleElement === media) activeAudibleElement = null;
-        const paths = [thing.storagePath, thing.cutoutStoragePath].filter(Boolean);
-        if (paths.length) {
-          const { error: storageError } = await supabase.storage.from(STORAGE_BUCKET).remove(paths);
-          if (storageError) throw storageError;
-        }
-        const { error } = await supabase.from('board_items').delete().eq('id', thing.id).eq('board', legacyBoardName);
-        if (error) throw error;
-        state.things = state.things.filter(x => x.id !== thing.id);
-        el.remove();
-        expandEskja();
-      } catch (error) {
-        console.error(error);
-        alert('The thing could not be deleted. Nothing was removed.');
-      }
+    deleteButton.addEventListener('click',async event=>{
+      event.stopPropagation();try{if(media){media.pause();audibleMedia.delete(media);}const paths=[item.storagePath,item.cutoutPath].filter(Boolean);if(paths.length){const {error}=await supabase.storage.from(STORAGE_BUCKET).remove(paths);if(error)throw error;}const {error}=await supabase.from('board_items').delete().eq('id',item.id).eq('board',boardName);if(error)throw error;state.items=state.items.filter(x=>x.id!==item.id);el.remove();expandBoard();}catch(error){console.error(error);alert('That item could not be deleted. Nothing was removed.');}
     });
-
-    controls.addEventListener('pointerdown', event => event.stopPropagation());
-  }
-
-  function makeTransportButton(media, className = '') {
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.className = `transport-button ${className}`.trim();
-    button.setAttribute('aria-label', 'play');
-    button.innerHTML = `
-      <span class="source-ring ring-a"></span>
-      <span class="source-ring ring-b"></span>
-      <span class="transport-mark play-mark"></span>`;
-
-    const setState = playing => {
-      const mark = button.querySelector('.transport-mark');
-      mark.className = `transport-mark ${playing ? 'isa-mark' : 'play-mark'}`;
-      button.setAttribute('aria-label', playing ? 'pause' : 'play');
-      button.title = playing ? 'pause' : 'play';
-    };
-    setState(false);
-    media.addEventListener('play', () => setState(true));
-    media.addEventListener('pause', () => setState(false));
-    media.addEventListener('ended', () => setState(false));
-    return { button, setState };
-  }
-
-  function makeAudioTransport(audio, thing, thingEl) {
-    const body = document.createElement('div');
-    body.className = 'audio-body';
-    const { button } = makeTransportButton(audio, 'audio-transport-button');
-    body.appendChild(button);
-    let rippleTimer = null;
-
-    const stopRippleLoop = () => {
-      clearTimeout(rippleTimer);
-      rippleTimer = null;
-      body.querySelectorAll('.sound-ripple').forEach(node => node.remove());
-    };
-
-    const emitRipple = () => {
-      if (audio.paused) return;
-      const ring = document.createElement('span');
-      const shape = 1 + Math.floor(Math.random() * 6);
-      ring.className = `sound-ripple ripple-shape-${shape}`;
-      body.appendChild(ring);
-      ring.addEventListener('animationend', () => ring.remove(), { once: true });
-      rippleTimer = setTimeout(emitRipple, 1700 + Math.random() * 600);
-    };
-
-    button.addEventListener('click', async event => {
-      event.stopPropagation();
-      select(thingEl);
-      if (audio.paused) {
-        claimVoice(audio);
-        await audio.play();
-      } else {
-        audio.pause();
-      }
-    });
-    audio.addEventListener('play', () => {
-      stopRippleLoop();
-      emitRipple();
-    });
-    audio.addEventListener('pause', stopRippleLoop);
-    audio.addEventListener('ended', stopRippleLoop);
-    return body;
-  }
-
-  function makeVideoTransport(video, thing, thingEl) {
-    const transport = document.createElement('div');
-    transport.className = 'video-transport';
-    const { button } = makeTransportButton(video, 'video-transport-button');
-    const timeline = document.createElement('div');
-    timeline.className = 'video-timeline';
-    timeline.setAttribute('aria-label', 'video position');
-    const ripple = document.createElement('span');
-    ripple.className = 'video-ripple ripple-shape-3';
-    timeline.appendChild(ripple);
-    transport.append(button, timeline);
-
-    const updateTimeline = () => {
-      const duration = Number.isFinite(video.duration) && video.duration > 0 ? video.duration : 1;
-      const pct = Math.max(0, Math.min(100, (video.currentTime / duration) * 100));
-      ripple.style.left = `${pct}%`;
-    };
-    video.addEventListener('timeupdate', updateTimeline);
-    video.addEventListener('loadedmetadata', updateTimeline);
-
-    button.addEventListener('click', async event => {
-      event.stopPropagation();
-      select(thingEl);
-      if (video.paused) {
-        claimVoice(video);
-        await video.play();
-      } else {
-        video.pause();
-      }
-    });
-
-    timeline.addEventListener('pointerdown', event => {
-      event.preventDefault();
-      event.stopPropagation();
-      select(thingEl);
-      const seek = e => {
-        if (!Number.isFinite(video.duration) || video.duration <= 0) return;
-        const rect = timeline.getBoundingClientRect();
-        const pct = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
-        video.currentTime = pct * video.duration;
-        updateTimeline();
-      };
-      seek(event);
-      timeline.setPointerCapture(event.pointerId);
-      timeline.addEventListener('pointermove', seek);
-      timeline.addEventListener('pointerup', () => timeline.removeEventListener('pointermove', seek), { once: true });
-    });
-
-    return transport;
-  }
-
-  function claimVoice(media) {
-    if (activeAudibleElement && activeAudibleElement !== media && !activeAudibleElement.paused) {
-      activeAudibleElement.pause();
-    }
-    activeAudibleElement = media;
+    controls.addEventListener('pointerdown',event=>event.stopPropagation());
   }
 
   function select(el) {
-    document.querySelectorAll('.thing-item.selected').forEach(node => node.classList.remove('selected'));
-    el.classList.add('selected');
+    document.querySelectorAll(".image-item.selected, .note-item.selected, .media-item.selected")
+      .forEach(node => node.classList.remove("selected"));
+    el.classList.add("selected");
   }
 
-  eskja.addEventListener('pointerdown', event => {
-    if (event.target === eskja) {
-      document.querySelectorAll('.thing-item.selected').forEach(node => node.classList.remove('selected'));
+  board.addEventListener("pointerdown", event => {
+    if (event.target === board) {
+      document.querySelectorAll(".image-item.selected, .note-item.selected, .media-item.selected")
+        .forEach(node => node.classList.remove("selected"));
     }
   });
 
-  const noteButton = document.getElementById('noteButton');
-  noteButton?.addEventListener('click', async () => {
-    const offset = 24 + (state.things.length % 8) * 18;
-    try {
-      await addThing({ type: 'note', text: '', width: 220, height: 120, x: offset, y: offset });
-      const newest = state.things[state.things.length - 1];
-      const field = document.querySelector(`[data-id="${CSS.escape(newest.id)}"] .note-text`);
-      if (field) { field.focus(); field.select(); }
-    } catch (error) {
-      console.error(error);
-      alert(error?.message ? `That text could not be added.\n\n${error.message}` : 'That text could not be added.');
-    }
-  });
-
-  input.addEventListener('change', async () => {
-    for (const file of [...input.files]) {
+  const noteButton = document.getElementById("noteButton");
+  if (noteButton) {
+    noteButton.addEventListener("click", async () => {
+      const width = 220;
+      const height = 120;
+      const offset = 24 + (state.items.length % 8) * 18;
       try {
-        await uploadThing(file);
+        await addItem({ type: "note", text: "", width, height, x: offset, y: offset });
+        const newest = state.items[state.items.length - 1];
+        const el = document.querySelector(`[data-id="${CSS.escape(newest.id)}"] .note-text`);
+        if (el) { el.focus(); el.select(); }
       } catch (error) {
         console.error(error);
-        alert(error?.message ? `That thing could not be added.\n\n${error.message}` : 'That thing could not be added.');
+        alert(error?.message ? `That note could not be added.\n\n${error.message}` : 'That note could not be added.');
       }
+    });
+  }
+
+  input.addEventListener("change", async () => {
+    for (const file of [...input.files]) {
+      try { await uploadThing(file); }
+      catch (error) { console.error(error); alert(error?.message ? `That thing could not be uploaded.\n\n${error.message}` : 'That thing could not be uploaded.'); }
     }
-    input.value = '';
+    input.value = "";
   });
 
   async function uploadThing(file) {
-    const type = thingTypeForFile(file);
-    if (!type) throw new Error('Eskja does not know how to keep this file yet.');
-
-    const id = crypto.randomUUID();
-    const ext = (file.name.split('.').pop() || fallbackExtension(type)).toLowerCase().replace(/[^a-z0-9]/g, '') || fallbackExtension(type);
-    const storagePath = `${legacyBoardName}/${id}.${ext}`;
-    const { error: uploadError } = await supabase.storage
-      .from(STORAGE_BUCKET)
-      .upload(storagePath, file, { contentType: file.type || 'application/octet-stream', upsert: false });
-    if (uploadError) throw uploadError;
-
-    const offset = 20 + (state.things.length % 8) * 18;
-    let width;
-    let height;
-    const objectUrl = URL.createObjectURL(file);
+    const isImage=file.type.startsWith('image/'), isAudio=file.type.startsWith('audio/'), isVideo=file.type.startsWith('video/');
+    if(!isImage&&!isAudio&&!isVideo) throw new Error('Unsupported file type.');
+    const type=isAudio?'audio':isVideo?'video':'image';
+    const id=crypto.randomUUID?crypto.randomUUID():`${Date.now()}-${Math.random()}`;
+    const ext=(file.name.split('.').pop()||'bin').toLowerCase().replace(/[^a-z0-9]/g,'')||'bin';
+    const storagePath=`${boardName}/${id}.${ext}`;
+    const {error:uploadError}=await supabase.storage.from(STORAGE_BUCKET).upload(storagePath,file,{contentType:file.type,upsert:false}); if(uploadError)throw uploadError;
+    let width=300,height=62;
+    const objectUrl=URL.createObjectURL(file);
     try {
-      if (type === 'image') {
-        const size = await imageSize(objectUrl);
-        const maxWidth = Math.min(500, window.innerWidth * 0.45);
-        width = Math.min(size.width, maxWidth);
-        height = width * size.height / size.width;
-      } else if (type === 'video') {
-        const size = await videoSize(objectUrl);
-        const maxWidth = Math.min(520, window.innerWidth * 0.48);
-        width = Math.min(size.width || 480, maxWidth);
-        height = width * (size.height || 270) / Math.max(1, size.width || 480);
-      } else {
-        width = 92;
-        height = 58;
-      }
-    } finally {
-      URL.revokeObjectURL(objectUrl);
+      if(isImage){const size=await imageSize(objectUrl);const maxWidth=Math.min(500,window.innerWidth*.45);width=Math.min(size.width,maxWidth);height=width*size.height/size.width;}
+      else if(isVideo){const size=await videoSize(objectUrl);const maxWidth=Math.min(520,window.innerWidth*.55);width=Math.min(size.width||420,maxWidth);height=width*(size.height||236)/(size.width||420);}
+      else {width=Math.min(260,window.innerWidth*.55);height=62;}
+    } finally {URL.revokeObjectURL(objectUrl);}
+    const offset=20+(state.items.length%8)*18;
+    try{await addItem({id,type,storagePath,width,height,x:offset,y:offset});}
+    catch(error){await supabase.storage.from(STORAGE_BUCKET).remove([storagePath]);throw error;}
+  }
+
+  function videoSize(src){return new Promise((resolve,reject)=>{const v=document.createElement('video');v.preload='metadata';v.onloadedmetadata=()=>resolve({width:v.videoWidth,height:v.videoHeight});v.onerror=reject;v.src=src;});}
+
+  function expandBoard() {
+    let requiredHeight = window.innerHeight;
+    for (const item of state.items) {
+      requiredHeight = Math.max(requiredHeight, item.y + item.height + 80);
     }
-
-    try {
-      await addThing({ id, type, storagePath, mimeType: file.type, width, height, x: offset, y: offset });
-    } catch (error) {
-      await supabase.storage.from(STORAGE_BUCKET).remove([storagePath]);
-      throw error;
-    }
+    board.style.minHeight = `${Math.ceil(requiredHeight)}px`;
   }
 
-  function thingTypeForFile(file) {
-    if (file.type.startsWith('image/')) return 'image';
-    if (file.type.startsWith('audio/')) return 'audio';
-    if (file.type.startsWith('video/')) return 'video';
-    return null;
-  }
-
-  function fallbackExtension(type) {
-    return type === 'audio' ? 'mp3' : type === 'video' ? 'mp4' : 'jpg';
-  }
-
-  function isStaticImage(thing) {
-    if (thing.mimeType) return thing.mimeType.startsWith('image/') && thing.mimeType !== 'image/gif';
-    return !/\.gif(?:$|\?)/i.test(thing.storagePath || thing.src || '');
-  }
-
-  async function buildAndStoreCutout(thing) {
-    const blob = await removeBackgroundLocally(thing.src);
-    const path = `${legacyBoardName}/${thing.id}-cutout.png`;
-    const { error } = await supabase.storage.from(STORAGE_BUCKET).upload(path, blob, { contentType: 'image/png', upsert: true });
-    if (error) throw error;
-    thing.cutoutStoragePath = path;
-    thing.cutoutSrc = await signedUrl(path);
-  }
-
-  async function getBackgroundModel() {
-    if (!backgroundModelPromise) {
-      backgroundModelPromise = (async () => {
-        const lib = await import('https://cdn.jsdelivr.net/npm/@huggingface/transformers@4.0.1');
-        const modelId = 'Ko033/isnet-general-use-onnx';
-        const model = await lib.AutoModel.from_pretrained(modelId, { dtype: 'q8' });
-        const processor = await lib.AutoProcessor.from_pretrained(modelId);
-        return { ...lib, model, processor };
-      })();
-    }
-    return backgroundModelPromise;
-  }
-
-  async function removeBackgroundLocally(src) {
-    const { model, processor, RawImage } = await getBackgroundModel();
-    const raw = await RawImage.fromURL(src);
-    const { pixel_values } = await processor(raw);
-    const { output_image } = await model({ input_image: pixel_values });
-    const mask = await RawImage
-      .fromTensor(output_image[0].sigmoid().mul(255).to('uint8'))
-      .resize(raw.width, raw.height);
-
-    const sourceBlob = await fetch(src).then(response => {
-      if (!response.ok) throw new Error('Could not read the original image.');
-      return response.blob();
-    });
-    const bitmap = await createImageBitmap(sourceBlob);
-    const canvas = document.createElement('canvas');
-    canvas.width = raw.width;
-    canvas.height = raw.height;
-    const ctx = canvas.getContext('2d', { willReadFrequently: true });
-    ctx.drawImage(bitmap, 0, 0, raw.width, raw.height);
-    bitmap.close?.();
-
-    const pixels = ctx.getImageData(0, 0, canvas.width, canvas.height);
-    const alpha = mask.data;
-    const channels = Math.max(1, Math.round(alpha.length / (canvas.width * canvas.height)));
-    for (let i = 0; i < canvas.width * canvas.height; i++) {
-      const matte = alpha[i * channels] ?? alpha[i] ?? 255;
-      pixels.data[i * 4 + 3] = Math.round((pixels.data[i * 4 + 3] * matte) / 255);
-    }
-    ctx.putImageData(pixels, 0, 0);
-
+  function fileToDataUrl(file) {
     return new Promise((resolve, reject) => {
-      canvas.toBlob(blob => blob ? resolve(blob) : reject(new Error('Could not create the cutout image.')), 'image/png');
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
     });
   }
 
@@ -668,21 +347,434 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
     });
   }
 
-  function videoSize(src) {
-    return new Promise((resolve, reject) => {
-      const video = document.createElement('video');
-      video.onloadedmetadata = () => resolve({ width: video.videoWidth, height: video.videoHeight });
-      video.onerror = reject;
-      video.src = src;
-    });
+  function makeSeed() {
+    if (crypto.getRandomValues) {
+      const a = new Uint32Array(2);
+      crypto.getRandomValues(a);
+      return (a[0] ^ a[1]) >>> 0;
+    }
+    return Math.floor(Math.random() * 0xffffffff) >>> 0;
   }
 
-  function expandEskja() {
-    let requiredHeight = window.innerHeight;
-    for (const thing of state.things) {
-      requiredHeight = Math.max(requiredHeight, thing.y + thing.height + 80);
+  function seeded(seed) {
+    let s = seed >>> 0;
+    return () => {
+      s += 0x6D2B79F5;
+      let t = s;
+      t = Math.imul(t ^ (t >>> 15), t | 1);
+      t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+
+  async function applyAging(item, img) {
+    if (!img.complete || !img.naturalWidth) {
+      await new Promise(resolve => img.addEventListener("load", resolve, { once: true }));
     }
-    eskja.style.minHeight = `${Math.ceil(requiredHeight)}px`;
+
+    // Always build from the pristine uploaded source.
+    const source = new Image();
+    source.crossOrigin = "anonymous";
+    source.src = item.src;
+    if (!source.complete || !source.naturalWidth) {
+      await new Promise(resolve => source.addEventListener("load", resolve, { once: true }));
+    }
+
+    const agedUrl = buildAgedImage(source, item.ageSeed);
+    img.src = agedUrl;
+    img.style.filter = `grayscale(${item.grayscale || 0}%)`;
+  }
+
+  function buildAgedImage(img, seed) {
+    const maxDim = 1800;
+    const scale = Math.min(1, maxDim / Math.max(img.naturalWidth, img.naturalHeight));
+    const w = Math.max(1, Math.round(img.naturalWidth * scale));
+    const h = Math.max(1, Math.round(img.naturalHeight * scale));
+
+    const canvas = document.createElement("canvas");
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext("2d", { willReadFrequently: true });
+    ctx.drawImage(img, 0, 0, w, h);
+
+    const rand = seeded(seed);
+    const q = (a, b) => a + (b - a) * rand();
+
+    // Layer 1: one coherent photographic character.
+    const styles = [
+      {
+        name: "film-noir",
+        saturation: [0.03, 0.12],
+        contrast: [1.12, 1.30],
+        exposure: [-0.06, 0.01],
+        warmth: [-0.01, 0.025],
+        softness: [0.00, 0.018],
+        grain: [0.035, 0.085],
+        vignette: [0.06, 0.16]
+      },
+      {
+        name: "brownie-camera",
+        saturation: [0.60, 0.86],
+        contrast: [0.84, 0.98],
+        exposure: [-0.02, 0.05],
+        warmth: [0.045, 0.12],
+        softness: [0.018, 0.045],
+        grain: [0.045, 0.10],
+        vignette: [0.08, 0.22]
+      },
+      {
+        name: "tintype",
+        saturation: [0.00, 0.06],
+        contrast: [1.02, 1.22],
+        exposure: [-0.08, 0.00],
+        warmth: [-0.015, 0.02],
+        softness: [0.00, 0.012],
+        grain: [0.045, 0.095],
+        vignette: [0.10, 0.24]
+      },
+      {
+        name: "silver-plate",
+        saturation: [0.00, 0.05],
+        contrast: [0.95, 1.15],
+        exposure: [-0.02, 0.06],
+        warmth: [-0.02, 0.012],
+        softness: [0.005, 0.02],
+        grain: [0.025, 0.065],
+        vignette: [0.04, 0.14]
+      },
+      {
+        name: "hollywood-glamour",
+        saturation: [0.65, 0.90],
+        contrast: [0.82, 0.97],
+        exposure: [0.00, 0.08],
+        warmth: [0.025, 0.075],
+        softness: [0.035, 0.075],
+        grain: [0.018, 0.045],
+        vignette: [0.025, 0.10]
+      },
+      {
+        name: "faded-color-print",
+        saturation: [0.48, 0.76],
+        contrast: [0.76, 0.94],
+        exposure: [-0.015, 0.045],
+        warmth: [0.035, 0.10],
+        softness: [0.008, 0.025],
+        grain: [0.025, 0.065],
+        vignette: [0.025, 0.12]
+      },
+      {
+        name: "old-black-and-white",
+        saturation: [0.00, 0.04],
+        contrast: [0.92, 1.12],
+        exposure: [-0.03, 0.03],
+        warmth: [-0.008, 0.015],
+        softness: [0.00, 0.018],
+        grain: [0.055, 0.11],
+        vignette: [0.04, 0.15]
+      },
+      {
+        name: "sepia-print",
+        saturation: [0.12, 0.28],
+        contrast: [0.82, 1.02],
+        exposure: [-0.02, 0.04],
+        warmth: [0.075, 0.16],
+        softness: [0.008, 0.025],
+        grain: [0.035, 0.08],
+        vignette: [0.04, 0.16]
+      },
+      {
+        name: "early-color-film",
+        saturation: [0.48, 0.80],
+        contrast: [0.84, 1.03],
+        exposure: [-0.04, 0.05],
+        warmth: [-0.015, 0.075],
+        softness: [0.01, 0.035],
+        grain: [0.035, 0.09],
+        vignette: [0.03, 0.14]
+      }
+    ];
+
+    const style = styles[Math.floor(rand() * styles.length)];
+    const saturation = q(...style.saturation);
+    const contrast = q(...style.contrast);
+    const exposure = q(...style.exposure);
+    const warmth = q(...style.warmth);
+    const softness = q(...style.softness);
+    const grain = q(...style.grain);
+    const vignette = q(...style.vignette);
+
+    // Slight blur/diffusion for period optics, before the pixel treatment.
+    if (softness > 0.002) {
+      ctx.save();
+      ctx.globalAlpha = Math.min(0.34, softness * 4.5);
+      ctx.filter = `blur(${Math.max(0.25, Math.min(2.2, softness * Math.min(w, h)))}px)`;
+      ctx.drawImage(canvas, 0, 0);
+      ctx.restore();
+    }
+
+    const pixels = ctx.getImageData(0, 0, w, h);
+    const d = pixels.data;
+
+    for (let i = 0; i < d.length; i += 4) {
+      let r = d[i] / 255;
+      let g = d[i + 1] / 255;
+      let b = d[i + 2] / 255;
+
+      const lum = 0.299 * r + 0.587 * g + 0.114 * b;
+      const n = (rand() - 0.5) * grain;
+
+      // Style-specific saturation.
+      r = lum + (r - lum) * saturation;
+      g = lum + (g - lum) * saturation;
+      b = lum + (b - lum) * saturation;
+
+      // Mild, non-uniform color response.
+      r += warmth + n;
+      g += warmth * 0.60 + n;
+      b -= warmth * 0.42 - n * 0.25;
+
+      r = (r - 0.5) * contrast + 0.5 + exposure;
+      g = (g - 0.5) * contrast + 0.5 + exposure;
+      b = (b - 0.5) * contrast + 0.5 + exposure;
+
+      d[i] = Math.max(0, Math.min(255, r * 255));
+      d[i + 1] = Math.max(0, Math.min(255, g * 255));
+      d[i + 2] = Math.max(0, Math.min(255, b * 255));
+    }
+
+    ctx.putImageData(pixels, 0, 0);
+
+    // Subtle, irregular exposure/fading rather than the previous bright center.
+    const wash = ctx.createRadialGradient(
+      q(w * 0.25, w * 0.75), q(h * 0.20, h * 0.80), 0,
+      q(w * 0.25, w * 0.75), q(h * 0.20, h * 0.80), Math.max(w, h) * q(0.42, 0.75)
+    );
+    wash.addColorStop(0, `rgba(255,242,215,${q(0.00, 0.045)})`);
+    wash.addColorStop(0.65, `rgba(255,242,215,${q(0.00, 0.02)})`);
+    wash.addColorStop(1, "rgba(255,242,215,0)");
+    ctx.fillStyle = wash;
+    ctx.fillRect(0, 0, w, h);
+
+    // Very restrained vignette, only where the selected photographic style calls for it.
+    const vg = ctx.createRadialGradient(
+      w / 2, h / 2, Math.min(w, h) * 0.32,
+      w / 2, h / 2, Math.max(w, h) * 0.78
+    );
+    vg.addColorStop(0, "rgba(30,22,15,0)");
+    vg.addColorStop(1, `rgba(30,22,15,${vignette})`);
+    ctx.fillStyle = vg;
+    ctx.fillRect(0, 0, w, h);
+
+    // Layer 2: physical wear. Each is independently optional.
+    if (rand() < 0.72) addFilmGrain(ctx, w, h, rand, q);
+    if (rand() < 0.62) addDust(ctx, w, h, rand, q);
+    if (rand() < 0.38) addScratches(ctx, w, h, rand, q);
+    if (rand() < 0.26) addWrinkles(ctx, w, h, rand, q);
+    if (rand() < 0.19) addCrease(ctx, w, h, rand, q);
+    if (rand() < 0.33) addEdgeWear(ctx, w, h, rand, q);
+    if (rand() < 0.10) addSmallTear(ctx, w, h, rand, q);
+    if (rand() < 0.16) addDiscoloration(ctx, w, h, rand, q);
+
+    return canvas.toDataURL("image/jpeg", 0.92);
+  }
+
+  function addFilmGrain(ctx, w, h, rand, q) {
+    const count = Math.max(900, Math.floor(w * h / q(120, 240)));
+    ctx.save();
+    for (let i = 0; i < count; i++) {
+      const x = rand() * w;
+      const y = rand() * h;
+      const size = q(0.35, 1.25) * Math.max(1, Math.min(w, h) / 900);
+      const v = rand() < 0.52 ? q(70, 155) : q(175, 235);
+      ctx.fillStyle = `rgba(${v},${v},${v},${q(0.018, 0.07)})`;
+      ctx.fillRect(x, y, size, size);
+    }
+    ctx.restore();
+  }
+
+  function addDust(ctx, w, h, rand, q) {
+    const count = Math.max(8, Math.floor(w * h / q(45000, 80000)));
+    ctx.save();
+    for (let i = 0; i < count; i++) {
+      const x = rand() * w;
+      const y = rand() * h;
+      const r = q(0.25, 1.7) * Math.max(1, Math.min(w, h) / 850);
+      const dark = rand() < 0.58;
+      const c = dark ? q(20, 65) : q(190, 245);
+      ctx.fillStyle = `rgba(${c},${Math.max(0,c-5)},${Math.max(0,c-12)},${q(0.04,0.15)})`;
+      ctx.beginPath();
+      ctx.arc(x, y, r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  function addScratches(ctx, w, h, rand, q) {
+    const count = Math.floor(q(1, 7));
+    ctx.save();
+    ctx.lineCap = "round";
+    for (let i = 0; i < count; i++) {
+      const x = rand() * w;
+      const y = rand() * h;
+      const len = q(h * 0.035, h * 0.22);
+      const dx = q(-w * 0.012, w * 0.012);
+      const c = rand() < 0.5 ? 238 : 42;
+      ctx.strokeStyle = `rgba(${c},${Math.max(0,c-10)},${Math.max(0,c-18)},${q(0.025,0.11)})`;
+      ctx.lineWidth = q(0.35, 1.2) * Math.max(1, w / 900);
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+      ctx.lineTo(x + dx, Math.min(h, y + len));
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  function addWrinkles(ctx, w, h, rand, q) {
+    const count = Math.floor(q(1, 4));
+    ctx.save();
+    ctx.lineCap = "round";
+    for (let i = 0; i < count; i++) {
+      const x = q(w * 0.08, w * 0.92);
+      const y = q(h * 0.08, h * 0.92);
+      const length = q(Math.min(w, h) * 0.12, Math.min(w, h) * 0.42);
+      const angle = q(-Math.PI, Math.PI);
+      const x2 = x + Math.cos(angle) * length;
+      const y2 = y + Math.sin(angle) * length;
+
+      ctx.strokeStyle = `rgba(55,40,28,${q(0.035,0.085)})`;
+      ctx.lineWidth = q(0.8, 2.0) * Math.max(1, w / 1000);
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+      ctx.quadraticCurveTo(
+        (x + x2) / 2 + q(-w * 0.03, w * 0.03),
+        (y + y2) / 2 + q(-h * 0.03, h * 0.03),
+        x2, y2
+      );
+      ctx.stroke();
+
+      ctx.strokeStyle = `rgba(245,235,215,${q(0.025,0.07)})`;
+      ctx.lineWidth *= 0.55;
+      ctx.beginPath();
+      ctx.moveTo(x + 1, y - 1);
+      ctx.quadraticCurveTo(
+        (x + x2) / 2 + q(-w * 0.025, w * 0.025),
+        (y + y2) / 2 + q(-h * 0.025, h * 0.025),
+        x2 + 1, y2 - 1
+      );
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  function addCrease(ctx, w, h, rand, q) {
+    const x1 = q(w * 0.05, w * 0.95);
+    const y1 = q(h * 0.05, h * 0.95);
+    const x2 = q(w * 0.05, w * 0.95);
+    const y2 = q(h * 0.05, h * 0.95);
+
+    ctx.save();
+    ctx.lineCap = "round";
+
+    ctx.strokeStyle = `rgba(45,30,20,${q(0.08,0.16)})`;
+    ctx.lineWidth = q(1.2, 3.0) * Math.max(1, Math.min(w,h) / 900);
+    ctx.beginPath();
+    ctx.moveTo(x1, y1);
+    ctx.quadraticCurveTo(q(w*0.25,w*0.75), q(h*0.25,h*0.75), x2, y2);
+    ctx.stroke();
+
+    ctx.strokeStyle = `rgba(250,242,225,${q(0.045,0.11)})`;
+    ctx.lineWidth *= 0.5;
+    ctx.beginPath();
+    ctx.moveTo(x1 - 1, y1 - 1);
+    ctx.quadraticCurveTo(q(w*0.25,w*0.75), q(h*0.25,h*0.75), x2 - 1, y2 - 1);
+    ctx.stroke();
+
+    ctx.restore();
+  }
+
+  function addEdgeWear(ctx, w, h, rand, q) {
+    ctx.save();
+    const amount = q(0.035, 0.10);
+    const strips = [
+      [0, 0, w, q(h*0.015,h*0.045)],
+      [0, h-q(h*0.015,h*0.045), w, h],
+      [0, 0, q(w*0.015,w*0.045), h],
+      [w-q(w*0.015,w*0.045), 0, w, h]
+    ];
+
+    strips.forEach(([x1,y1,x2,y2]) => {
+      const g = ctx.createLinearGradient(x1, y1, x2, y2);
+      g.addColorStop(0, `rgba(65,42,24,${amount})`);
+      g.addColorStop(0.55, `rgba(95,60,30,${amount*0.45})`);
+      g.addColorStop(1, "rgba(65,42,24,0)");
+      ctx.fillStyle = g;
+      ctx.fillRect(x1, y1, x2-x1, y2-y1);
+    });
+
+    // Small irregular worn nicks along the perimeter.
+    const nicks = Math.floor(q(3, 12));
+    for (let i = 0; i < nicks; i++) {
+      const side = Math.floor(rand() * 4);
+      let x, y;
+      if (side === 0) { x = rand()*w; y = rand()*h*0.025; }
+      else if (side === 1) { x = rand()*w; y = h-rand()*h*0.025; }
+      else if (side === 2) { x = rand()*w*0.025; y = rand()*h; }
+      else { x = w-rand()*w*0.025; y = rand()*h; }
+
+      ctx.fillStyle = `rgba(70,45,25,${q(0.05,0.15)})`;
+      ctx.beginPath();
+      ctx.arc(x, y, q(0.6, 2.2) * Math.max(1, w/900), 0, Math.PI*2);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  function addSmallTear(ctx, w, h, rand, q) {
+    const edge = Math.floor(rand() * 4);
+    let x, y;
+    if (edge === 0) { x = q(w*0.1,w*0.9); y = q(0,h*0.025); }
+    else if (edge === 1) { x = q(w*0.1,w*0.9); y = q(h*0.975,h); }
+    else if (edge === 2) { x = q(0,w*0.025); y = q(h*0.1,h*0.9); }
+    else { x = q(w*0.975,w); y = q(h*0.1,h*0.9); }
+
+    const len = q(Math.min(w,h)*0.015, Math.min(w,h)*0.055);
+    const angle = q(-0.8,0.8);
+
+    ctx.save();
+    ctx.strokeStyle = `rgba(35,25,18,${q(0.10,0.20)})`;
+    ctx.lineWidth = q(1,2.5);
+    ctx.beginPath();
+    ctx.moveTo(x,y);
+    ctx.lineTo(x+Math.cos(angle)*len, y+Math.sin(angle)*len);
+    ctx.stroke();
+
+    ctx.strokeStyle = `rgba(245,235,215,${q(0.05,0.12)})`;
+    ctx.lineWidth *= 0.5;
+    ctx.beginPath();
+    ctx.moveTo(x+1,y-1);
+    ctx.lineTo(x+Math.cos(angle)*len+1, y+Math.sin(angle)*len-1);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  function addDiscoloration(ctx, w, h, rand, q) {
+    const patches = Math.floor(q(1, 4));
+    ctx.save();
+    for (let i = 0; i < patches; i++) {
+      const x = q(w*0.08,w*0.92);
+      const y = q(h*0.08,h*0.92);
+      const rx = q(w*0.025,w*0.12);
+      const ry = q(h*0.02,h*0.10);
+      const g = ctx.createRadialGradient(x,y,0,x,y,Math.max(rx,ry));
+      g.addColorStop(0, `rgba(110,75,35,${q(0.025,0.08)})`);
+      g.addColorStop(0.72, `rgba(125,85,42,${q(0.015,0.05)})`);
+      g.addColorStop(1, "rgba(125,85,42,0)");
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.ellipse(x,y,rx,ry,q(-Math.PI,Math.PI),0,Math.PI*2);
+      ctx.fill();
+    }
+    ctx.restore();
   }
 
   load();

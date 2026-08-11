@@ -1,0 +1,28 @@
+Eskja v0.2 verification manifest
+
+BASELINE: the files uploaded by the user in the current turn are v0.1 source truth.
+
+UNCHANGED FROM v0.1 (byte-for-byte SHA256 match):
+  index.html: MATCH  448fa146ce80d9bbd743c124685b94e02a39e99f849b2e8da961817f5aa99096
+  nav.html: MATCH  fdac55c79df4714c255f570a6378d3eb673cc548fd77720fd32cdef6eedf552d
+  nav.js: MATCH  97c98eec4103c3bd0a0866054da66d481b595738f560766972166e72a24e06d8
+  wyf.html: MATCH  9c8d63fba92f3d637124c3d184f003ab68555eab277e7ec6019dacbbf148a7b5
+  README.md: MATCH  21746790062ac38468b13c2f52d1c25d565047798b85b962a6772e3cb3c6edcb
+  setup.sql: MATCH  0199bcd9751da8578619410e0c0fbdb43380aaf2b00b84ee10380428a34302f6
+  supabase-config.js: MATCH  96f830fadbfaf2b3176f561730d1e1d410b8f2cfe0a400ad13d15be5d1c86b80
+  vercel.json: MATCH  e3ab8df58caa2a5cae435be629313a15fce24ae4b0ba0dbb8a51ef1936822789
+  key.png: MATCH  8269db0eb04b857ce808018ff53570660a84331c3c219c77e0e9d99511c4be5f
+  favicon.png: MATCH  2e3a38505031075194815a21f7aa7bf7b234a489a11f932cac6771db26be7608
+
+INTENTIONALLY CHANGED FOR v0.2:
+  app.js — media, cutout, cursor/media behavior
+  board.html — + accepts image/audio/video
+  styles.css — cursor/media/cutout styles
+  ESKJA.md — v0.2 decisions recorded
+  assets/cursor-open.png — latest transparent open-hand file
+  assets/cursor-grab.png — latest transparent grab-hand file
+
+SEPARATE / NOT INCLUDED IN THIS ZIP:
+  database migration SQL — run only after front-end preview is confirmed correct
+
+RULE: v0.1 is immutable baseline; v0.2 is derived only from these exact uploaded v0.1 files.

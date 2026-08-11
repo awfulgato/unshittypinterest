@@ -1,115 +1,44 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>wyf</title>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>eskja</title>
+  <link rel="icon" type="image/png" href="favicon.png">
   <style>
-    html, body {
-      margin: 0;
-      width: 100%;
-      min-height: 100%;
-      background: #000;
-      color: #fff;
-    }
-
-    body {
-      min-height: 100vh;
-      overflow: hidden;
-      position: relative;
-    }
-
-    /* The supplied key image, displayed exactly as an image and only scaled down. */
-    .key-link {
-      position: absolute;
-      left: 50%;
-      top: 50%;
-      transform: translate(-50%, -50%);
-      width: 64px;
-      height: 64px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      cursor: pointer;
-      text-decoration: none;
-    }
-
-    .key-link img {
-      width: 64px;
-      height: 64px;
-      object-fit: contain;
-      display: block;
-    }
-
-    .key-link:hover {
-      opacity: 0.75;
-    }
-
-    .password-box {
-      position: absolute;
-      left: 50%;
-      top: calc(50% + 75px);
-      transform: translateX(-50%);
-      display: none;
-      align-items: center;
-      justify-content: center;
-    }
-
-    .password-box.visible {
-      display: flex;
-    }
-
-    .password-box input {
-      width: 130px;
-      height: 40px;
-      box-sizing: border-box;
-      border: 1px solid #fff;
-      border-radius: 0;
-      background: #000;
-      color: #fff;
-      padding: 7px 9px;
-      outline: none;
-      text-align: center;
-      font: 14px/1 Arial, Helvetica, sans-serif;
-    }
+    html, body { margin:0; width:100%; height:100%; background:#000; color:#fff; }
+    body { min-height:100vh; overflow:hidden; position:relative; }
+    .key-link { position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); width:58px; height:58px; display:flex; align-items:center; justify-content:center; cursor:default; text-decoration:none; }
+    .key-link img { width:58px; height:58px; object-fit:contain; display:block; }
+    .key-link:hover { opacity:.78; }
+    .password-box { position:absolute; left:50%; top:calc(50% + 68px); transform:translateX(-50%); display:none; width:112px; height:34px; }
+    .password-box.visible { display:block; }
+    .password-box input { position:absolute; inset:0; width:112px; height:34px; box-sizing:border-box; border:0; border-bottom:1px solid #777; border-radius:0; background:transparent; color:transparent; caret-color:#8b8b8b; padding:0; outline:none; font:16px/1 Arial,Helvetica,sans-serif; }
+    .password-box input:focus { border-bottom-color:#969696; }
+    .password-crosses { position:absolute; left:0; right:0; bottom:8px; height:12px; display:flex; align-items:center; justify-content:center; gap:10px; pointer-events:none; }
+    .password-cross { position:relative; width:8px; height:10px; opacity:.82; }
+    .password-cross::before, .password-cross::after { content:""; position:absolute; left:3.5px; top:0; width:1px; height:10px; background:#858585; transform-origin:center; }
+    .password-cross::before { transform:rotate(42deg) translateX(-.2px); }
+    .password-cross::after { transform:rotate(-48deg) translateX(.3px); }
   </style>
 </head>
 <body>
-  <a class="key-link" id="keyLink" href="#" aria-label="continue">
-    <img src="key.png" alt="" aria-hidden="true">
-  </a>
-
-  <div class="password-box" id="passwordBox">
-    <input id="password" type="password" autocomplete="off" spellcheck="false" aria-label="password">
-  </div>
-
+  <a class="key-link" id="keyLink" href="#" aria-label="continue"><img src="key.png" alt="" aria-hidden="true"></a>
+  <div class="password-box" id="passwordBox"><div class="password-crosses" id="passwordCrosses" aria-hidden="true"></div><input id="password" type="password" maxlength="4" autocomplete="off" spellcheck="false" aria-label="password"></div>
   <script>
-    const keyLink = document.getElementById("keyLink");
-    const passwordBox = document.getElementById("passwordBox");
-    const password = document.getElementById("password");
-
-    function openPassword() {
-      passwordBox.classList.add("visible");
-      password.focus();
-    }
-
-    function checkPassword() {
-      if (password.value === "caeg") {
-        window.location.href = "nav.html?nav=wyf";
+    const keyLink=document.getElementById('keyLink');
+    const passwordBox=document.getElementById('passwordBox');
+    const password=document.getElementById('password');
+    const passwordCrosses=document.getElementById('passwordCrosses');
+    const drawCrosses=()=>{ passwordCrosses.innerHTML=''; for(let i=0;i<Math.min(password.value.length,4);i++){ const mark=document.createElement('span'); mark.className='password-cross'; passwordCrosses.appendChild(mark); } };
+    password.addEventListener('input',drawCrosses);
+    keyLink.addEventListener('click',e=>{e.preventDefault();passwordBox.classList.add('visible');password.focus();});
+    password.addEventListener('keydown',e=>{
+      if(e.key==='Enter'){
+        if(password.value==='caeg'){sessionStorage.setItem('wyf_unlocked','1');window.location.replace('nav.html?nav=wyf');}
+        else {password.value='';drawCrosses();}
       }
-    }
-
-    keyLink.addEventListener("click", (event) => {
-      event.preventDefault();
-      openPassword();
-    });
-
-    password.addEventListener("keydown", (event) => {
-      if (event.key === "Enter") checkPassword();
-      if (event.key === "Escape") {
-        passwordBox.classList.remove("visible");
-        password.value = "";
-      }
+      if(e.key==='Escape'){passwordBox.classList.remove('visible');password.value='';drawCrosses();}
     });
   </script>
 </body>

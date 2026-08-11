@@ -364,50 +364,13 @@ about your thing. as much or as little detail as possible." - Shop
 process remains at the discretion of the maker. - Shop closes its books
 when it cannot give submitted things appropriate care.
 
-## implementation batch — 2026-08-10
 
-### internal language
-- New implementation code should use `storeskja`, `eskja`, and `thing` where it describes the actual Eskja model.
-- Existing `board` / `board_items` names remain only as legacy compatibility until their migrations are deliberate and safe.
+## v0.2 implementation decisions
 
-### background removal
-- Retire the hourglass/aging feature.
-- Static image things receive a background-removal toggle.
-- The original image is always preserved.
-- Background removal runs on the user's device in the browser rather than through a remote inference API.
-- Current implementation uses Transformers.js with an Apache-2.0 general-use ISNet ONNX model loaded lazily on first use.
-- The resulting transparent PNG may be stored in Eskja so the state persists; processing itself stays local.
-- GIF and video background removal are not part of this implementation.
-- Glyph: two overlapping stone forms; rear stone outline, front stone solid.
-
-### hand cursor
-- Eskja's interactive cursor is an old engraved/sketched woman's hand with simple cloth cuff.
-- Open hand = resting, hovering, reaching.
-- Grasping hand = carrying/dragging a thing.
-- Change is an immediate two-frame swap, not a smooth morph.
-- Text and resize controls retain legible task-specific cursors where necessary.
-
-### mark / favicon
-- Use the selected simple white sketch of an eski/chest as the mark.
-- Black ground; high contrast; deliberately simple enough to survive favicon size.
-- No explanatory wordmark is required in the favicon.
-
-### audio things
-- `+` accepts MP3/M4A/WAV-class audio formats.
-- Audio is a movable/resizable thing with the same `×` delete control.
-- Play = hand-drawn wedge inside two imperfect rings.
-- Pause = Isa-like single vertical stroke inside the same rings.
-- While playing, a small family of imperfect rings is emitted outward from the source at slightly irregular intervals.
-- Ripples always travel outward, never inward.
-
-### video things
-- `+` accepts common browser video formats.
-- Video is movable/resizable and has the same `×` delete and saturation controls.
-- Play/pause uses the same wedge / Isa language as audio.
-- Instead of outward audio ripples, video has a quiet left-to-right duration line with an imperfect ripple marking current position.
-- The ripple can be dragged to seek.
-- Background removal is not offered for video.
-
-### one voice
-- One audible thing per eskja at a time.
-- Starting another audio or video thing pauses the currently audible thing in the same eskja.
+- Replace the hourglass/aging control with local background removal on image things. Original is always preserved; the control toggles original/cutout. Glyph: overlapping stone forms.
+- Eskja uses an open hand cursor for reaching/hovering and a grasping hand while dragging.
+- Audio things are movable/resizable/deletable and use double imperfect rings with play / Isa pause; while playing, irregular ripples travel outward only.
+- Video things are movable/resizable/deletable, retain saturation control, and use the same play / Isa language with a left-to-right progress ripple/track.
+- One audible thing per eskja at a time. Starting another audio/video thing pauses the previous one.
+- Internal vocabulary should move toward storeskja / eskja / thing as code is touched; do not rewrite the stable app merely for naming.
+- Versioning: v0.1 is the known-good baseline. Sequential releases v0.2, v0.3, etc.; patch releases v0.2.1, etc.
