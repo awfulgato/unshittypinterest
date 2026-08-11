@@ -20,43 +20,17 @@ body { min-height: 100vh; }
 }
 
 .home-links {
-  display: grid;
-  grid-template-columns: 92px 62px;
-  column-gap: 28px;
-  align-items: center;
+  display: flex;
+  gap: 28px;
 }
 
-.home-slot {
-  position: relative;
-  display: block;
-  height: 28px;
-  color: #888;
+.home-links a {
+  color: #fff;
   text-decoration: none;
-  cursor: default;
-}
-
-.home-label {
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  transform: translate(-50%, -50%);
-  white-space: nowrap;
-  color: inherit;
   font-size: 16px;
-  line-height: 1;
 }
 
-.husbond-label {
-  font-family: Arial, Helvetica, sans-serif;
-  letter-spacing: 0;
-  transition: color .15s ease, letter-spacing .15s ease;
-}
-
-.husbond-home:hover .husbond-label {
-  color: #aaa;
-  letter-spacing: .055em;
-}
-
+.home-links a:hover { text-decoration: underline; }
 
 .board-page {
   background: #fff;
@@ -77,10 +51,10 @@ body { min-height: 100vh; }
   transform-origin: top left;
   user-select: none;
   touch-action: none;
-  cursor: default;
+  cursor: grab;
 }
 
-.image-item:active { cursor: default; }
+.image-item:active { cursor: grabbing; }
 
 .image-item img {
   display: block;
@@ -114,7 +88,7 @@ body { min-height: 100vh; }
   padding: 0;
   margin: 0;
   color: #888;
-  cursor: default;
+  cursor: pointer;
   font-family: Arial, Helvetica, sans-serif;
   pointer-events: auto;
 }
@@ -142,12 +116,9 @@ body { min-height: 100vh; }
   background: transparent;
   border: 1px solid #888;
   cursor: nwse-resize;
-  display: none;
+  display: block;
   pointer-events: auto;
 }
-
-.image-item.selected > .resize-handle,
-.note-item.selected > .resize-handle { display: block; }
 
 .gray-wrap {
   position: absolute;
@@ -352,10 +323,10 @@ body { min-height: 100vh; }
 .add-action input { display: none; }
 
 /* --- text notes --- */
-.note-item { position: absolute; transform-origin: top left; user-select: none; touch-action: none; cursor: default; color: #ddd; }
-.note-item:active { cursor: default; }
+.note-item { position: absolute; transform-origin: top left; user-select: none; touch-action: none; cursor: grab; color: #ddd; }
+.note-item:active { cursor: grabbing; }
 .note-text { display: block; width: 100%; height: 100%; resize: none; overflow: hidden; border: 0; outline: 0; background: transparent; color: #ddd; padding: 2px; margin: 0; font:  16px/1.25 'UnifrakturCook', 'Old English Text MT', 'UnifrakturMaguntia', serif; user-select: text; cursor: text; }
-.note-item .resize-handle { display: none; }
+.note-item .resize-handle { display: block; }
 
 /* Controls stay subtle on black boards. */
 .image-controls { color: #888; }
@@ -364,62 +335,229 @@ body { min-height: 100vh; }
 
 .board-error { position: fixed; left: 16px; top: 16px; color: #900; font: 14px Arial, Helvetica, sans-serif; z-index: 999999; }
 
-/* --- interaction polish --- */
-.image-item, .note-item { transition: opacity .11s ease; }
-.image-item.dragging, .note-item.dragging { opacity: .82; }
-.image-controls { display: block; opacity: 0; visibility: hidden; transition: opacity .12s ease, visibility .12s ease; }
-.image-item.selected .image-controls, .note-item.selected .image-controls { opacity: 1; visibility: visible; }
-.control, .add-action, .nav-link, .wyf-link, .rune-link, .hand-link, .wyf-shared, .nav-home, .home-link { cursor: default; }
-.home-icon { position: fixed; top: 12px; left: 13px; width: 14px; height: 14px; color: #666; z-index: 100001; text-decoration: none; cursor: default; transition: color .12s ease, opacity .12s ease; }
-.home-icon:hover { color: #aaa; }
-.home-icon svg { width: 14px; height: 14px; display: block; fill: none; stroke: currentColor; stroke-width: 1.05; stroke-linecap: round; stroke-linejoin: round; }
-.passerby-blue:hover { color: #9BCFE3 !important; }
-
-
-/* Husbond heart layout control */
-.nav-canvas[data-nav="husbond"] .nav-link {
-  transition: left .28s ease, top .28s ease, transform .28s ease, color .12s ease;
-}
-.husbond-heart-toggle {
-  cursor: default;
-}
-.husbond-heart-toggle:hover,
-.husbond-heart-toggle[aria-pressed="true"] {
-  color: #c74747;
-}
-.nav-canvas.husbond-organized .nav-link:not(.husbond-heart-toggle) {
-  transform-origin: center;
+/* =========================================================
+   ESKJA implementation batch — things, hand, sound, video
+   ========================================================= */
+:root {
+  --eskja-hand-open: url('assets/cursor-open.png') 26 8, auto;
+  --eskja-hand-grab: url('assets/cursor-grab.png') 28 20, grabbing;
+  --eskja-gray: #888;
+  --eskja-gray-light: #aaa;
 }
 
+/* Eskja's hand: reaching by default, grasping only while a thing is carried. */
+.board-page,
+#board,
+.thing-item,
+.control,
+.add-action,
+.transport-button,
+.video-timeline,
+a,
+button,
+label {
+  cursor: var(--eskja-hand-open);
+}
+.thing-item.dragging { cursor: var(--eskja-hand-grab); }
+.thing-item.dragging * { cursor: var(--eskja-hand-grab) !important; }
+.note-text { cursor: text; }
+.resize-handle { cursor: nwse-resize; }
+.gray-slider input { cursor: ns-resize; }
 
-/* Expanded Husbond alphabet families */
-.nav-link.hebrew {
-  font-family: Arial, "Noto Sans Hebrew", "Times New Roman", serif;
-  direction: rtl;
+/* Every kept object uses the same spatial grammar. */
+.thing-item {
+  position: absolute;
+  transform-origin: top left;
+  user-select: none;
+  touch-action: none;
+}
+.image-item,
+.video-item,
+.audio-item,
+.note-item {
+  position: absolute;
 }
 
-.husbond-heart-toggle {
-  cursor: default;
+.image-item img,
+.video-item video {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  pointer-events: none;
   user-select: none;
 }
 
-.husbond-heart-toggle:hover,
-.husbond-heart-toggle[aria-pressed="true"] {
-  color: #c74747;
+.image-item.selected .image-controls,
+.note-item.selected .image-controls,
+.audio-item.selected .image-controls,
+.video-item.selected .image-controls {
+  display: block;
 }
 
-.nav-canvas[data-nav="husbond"] .nav-link {
-  transition: left .34s ease, top .34s ease, transform .34s ease, color .12s ease;
+/* Text is text: no saturation or cutout tools. */
+.note-item .image-controls .gray-wrap,
+.note-item .image-controls .cutout-button { display: none; }
+
+/* Stone figure/ground glyph: background removal for static images only. */
+.cutout-button {
+  position: absolute;
+  left: 24px;
+  top: -20px;
+  width: 22px;
+  height: 20px;
+  color: var(--eskja-gray);
+}
+.cutout-button svg { display: block; width: 22px; height: 20px; }
+.cutout-button:hover,
+.cutout-button.active { color: var(--eskja-gray-light); }
+.cutout-button.working {
+  opacity: .45;
+  pointer-events: none;
 }
 
-
-.wyf-label {
-  font-family: Arial, Helvetica, sans-serif;
-  letter-spacing: 0;
-  transition: color .15s ease, letter-spacing .15s ease;
+/* Audio things: the transport glyph is the visible body. */
+.audio-item {
+  min-width: 64px;
+  min-height: 44px;
+}
+.audio-body {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  overflow: visible;
+}
+.transport-button {
+  position: relative;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--eskja-gray);
+}
+.transport-button:hover { color: var(--eskja-gray-light); }
+.source-ring {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  border: 1px solid currentColor;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+.source-ring.ring-a {
+  width: 25px;
+  height: 23px;
+  border-radius: 52% 46% 49% 54% / 47% 53% 45% 55%;
+  transform: translate(-50%, -50%) rotate(-4deg);
+}
+.source-ring.ring-b {
+  width: 32px;
+  height: 30px;
+  border-radius: 48% 55% 44% 51% / 55% 44% 54% 46%;
+  transform: translate(-50%, -50%) rotate(3deg);
+  opacity: .8;
+}
+.transport-mark {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+.play-mark {
+  width: 0;
+  height: 0;
+  border-top: 5px solid transparent;
+  border-bottom: 5px solid transparent;
+  border-left: 8px solid currentColor;
+  margin-left: 1px;
+  filter: drop-shadow(.25px .25px 0 currentColor);
+}
+/* Isa: one still vertical stroke. */
+.isa-mark {
+  width: 1px;
+  height: 12px;
+  background: currentColor;
+  transform: translate(-50%, -50%) rotate(.7deg);
+  box-shadow: .4px 0 0 currentColor;
 }
 
-.wyf-home:hover .wyf-label {
-  color: #aaa;
-  letter-spacing: .055em;
+/* Fixed family of imperfect emitted rings; motion is always outward. */
+.sound-ripple {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 31px;
+  height: 29px;
+  margin-left: -15.5px;
+  margin-top: -14.5px;
+  border: 1px solid var(--eskja-gray);
+  pointer-events: none;
+  opacity: .58;
+  animation: eskja-ripple-out 1.25s ease-out forwards;
 }
+.ripple-shape-1 { border-radius: 52% 46% 49% 54% / 47% 53% 45% 55%; transform: rotate(-4deg); }
+.ripple-shape-2 { border-radius: 44% 56% 51% 48% / 54% 45% 57% 43%; transform: rotate(2deg); }
+.ripple-shape-3 { border-radius: 55% 45% 47% 53% / 46% 56% 44% 54%; transform: rotate(5deg); }
+.ripple-shape-4 { border-radius: 48% 53% 56% 43% / 52% 47% 45% 55%; transform: rotate(-2deg); }
+.ripple-shape-5 { border-radius: 46% 55% 45% 54% / 44% 54% 57% 43%; transform: rotate(7deg); }
+.ripple-shape-6 { border-radius: 54% 47% 52% 45% / 56% 43% 49% 52%; transform: rotate(-6deg); }
+@keyframes eskja-ripple-out {
+  0% { opacity: .58; scale: .95; }
+  75% { opacity: .20; }
+  100% { opacity: 0; scale: 2.7; }
+}
+
+/* Video: same play/pause language, but time moves left -> right. */
+.video-item { min-width: 90px; min-height: 60px; }
+.video-transport {
+  position: absolute;
+  left: 4px;
+  right: 4px;
+  bottom: -37px;
+  height: 34px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--eskja-gray);
+  pointer-events: auto;
+}
+.video-transport-button {
+  flex: 0 0 30px;
+  width: 30px;
+  height: 30px;
+  transform: scale(.88);
+}
+.video-timeline {
+  position: relative;
+  height: 18px;
+  flex: 1;
+  min-width: 35px;
+  touch-action: none;
+}
+.video-timeline::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 1px;
+  background: #777;
+  opacity: .65;
+}
+.video-ripple {
+  position: absolute;
+  top: 50%;
+  width: 9px;
+  height: 8px;
+  margin-left: -4.5px;
+  margin-top: -4px;
+  border: 1px solid currentColor;
+  background: #000;
+  transition: left .08s linear;
+}
+
+/* Old hourglass feature is retired. */
+.age-button { display: none !important; }
