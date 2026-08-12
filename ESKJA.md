@@ -117,7 +117,7 @@ When `+` is used from storeskja, the uploaded thing becomes an entrance
 into a new eskja.
 
 When `&` is used from storeskja, the resulting text becomes an entrance
-into a new eskja. A user who prefers titles/hierarchies can therefore
+to a new eskja. A user who prefers titles/hierarchies can therefore
 create them without requiring everyone to do so.
 
 A first-time user must not easily mistake storeskja for the interior of
@@ -264,9 +264,9 @@ Then supplies only:
 
 ### current size concept
 
--   small --- \$200 --- approximately 3×5 or 4×6 depending on the work
--   medium --- \$350 --- approximately 8×10 or 11×14
--   large --- \$500 --- approximately 16×20 or 16×24
+-   small --- $200 --- approximately 3×5 or 4×6 depending on the work
+-   medium --- $350 --- approximately 8×10 or 11×14
+-   large --- $500 --- approximately 16×20 or 16×24
 
 Exact physical dimensions may depend on what the Shop makes.
 
@@ -291,6 +291,61 @@ participate in helping people keep their things.
 
 When the Shop is at capacity, the books close. It does not automate care
 merely to increase throughput.
+
+## browser gathering tool
+
+The browser tool is a gathering aid, not Eskja in a sidebar and not an alternate place to build.
+
+### purpose
+
+- It exists only to gather things encountered while away from the storeskja and carry them home.
+- The side panel is a temporary bag/scratchpad, visually and functionally distinct from an eskja.
+- It must be immediately clear that the panel is for quick capture, not organization.
+- No storeskja navigation, eskja navigation, boards, spatial arrangement, resizing, nesting, entrances, saturation controls, or other major Eskja editing features belong in the panel.
+- The user gathers while away and arranges only after returning to the storeskja.
+- The bag may contain gathered images, selected text, links where appropriate as source/provenance information, and quick scraps of user-written text.
+- The final action is **keep**: send the gathered things home. Do not reuse `keep` for the act of gathering individual things.
+
+### gathering interaction
+
+- Opening the browser tool opens the side bag and enables gathering affordances on the current webpage.
+- Hovering a harvestable image reveals a small hand-sickle glyph.
+- Selecting actual webpage text reveals the same sickle glyph near the selection.
+- Clicking the sickle gathers the thing directly into the bag.
+- Gathering should require no download, Save As dialog, file picker, right-click menu, or intermediate file on the user's device.
+- The sickle represents the user's action -- **gather** -- not the technical acquisition method.
+- Eskja should expose outcomes, not acquisition methods.
+
+### acquisition
+
+Eskja should attempt whatever acquisition method is appropriate without surfacing the distinction to the user. For an image this may include retrieving the original resource, using another available source, extension-level retrieval, or capturing the rendered image.
+
+A visually captured image and a directly retrieved image are both simply gathered images to the user. Eskja may retain internal provenance about acquisition method, but it should not burden the human-facing interface with that distinction.
+
+If an image is visible but its underlying resource cannot be retrieved, Eskja may use an Eskja-native visual capture of that image. This is not a general screenshot tool:
+
+- Eskja captures the recognized image element, not an arbitrary user-drawn region.
+- The tool does not invite users to capture webpages, interfaces, arbitrary UI, or passages of webpage text as pixels.
+- If a recognized image contains words, handwriting, drawings, or other material, it remains an image. Eskja does not OCR or reinterpret it merely because its pixels depict text.
+- Actual webpage text is gathered as text.
+- Images are gathered as images.
+- Eskja preserves the nature of the thing rather than flattening everything into screenshots.
+
+Only after every supported acquisition method genuinely fails should the normal sickle become a **broken sickle**. The broken sickle means only: Eskja could not gather this thing. It must not appear merely because Eskja had to use a different successful acquisition method.
+
+### hard boundary: things, not interfaces
+
+Eskja stores things. It does not store websites, applications, dashboards, interfaces, browser windows, embedded external interfaces, or whole webpages -- including flattened screenshots of them.
+
+A user may gather a thing encountered within an interface, but not the interface itself.
+
+The browser tool must not become bookmarking, read-it-later, webpage archiving, or website-capture software.
+
+The governing product constraint is:
+
+**Eskja is strict about what enters and permissive about what happens after it enters.**
+
+Within Eskja, users should have broad agency over their things. The strictness belongs to the ontology of what counts as a thing, not to how users arrange, combine, or understand the things they have kept.
 
 ## deliberate refusals
 
@@ -364,7 +419,6 @@ about your thing. as much or as little detail as possible." - Shop
 process remains at the discretion of the maker. - Shop closes its books
 when it cannot give submitted things appropriate care.
 
-
 ## v0.2 implementation decisions
 
 - Replace the hourglass/aging control with local background removal on image things. Original is always preserved; the control toggles original/cutout. Glyph: overlapping stone forms.
@@ -374,3 +428,5 @@ when it cannot give submitted things appropriate care.
 - One audible thing per eskja at a time. Starting another audio/video thing pauses the previous one.
 - Internal vocabulary should move toward storeskja / eskja / thing as code is touched; do not rewrite the stable app merely for naming.
 - Versioning: v0.1 is the known-good baseline. Sequential releases v0.2, v0.3, etc.; patch releases v0.2.1, etc.
+
+**2026-08-12** - Browser gathering tool: the side panel is a temporary bag, not Eskja in a sidebar. Users gather while away and arrange only after returning to the storeskja. A hand-sickle glyph gathers compatible images and selected webpage text; `keep` is reserved for sending the gathered things home. Acquisition method is hidden from the user: direct retrieval and constrained visual capture of a recognized image are equivalent successful harvests. A broken sickle appears only after gathering truly fails. Visual capture is image-specific, never a general screenshot tool. Eskja preserves source-object type: webpage text remains text, images remain images, and text depicted inside an image does not cause OCR/reclassification. Eskja does not store whole websites, webpages, interfaces, applications, dashboards, or screenshots of them. The governing constraint is: Eskja is strict about what enters and permissive about what happens after it enters.
