@@ -1,0 +1,17 @@
+:root { color-scheme: light; font-family: Georgia, 'Times New Roman', serif; }
+* { box-sizing: border-box; }
+html, body { margin: 0; min-height: 100%; background: #f6f4ee; color: #171714; }
+body { min-height: 100vh; display: flex; flex-direction: column; }
+#bag { flex: 1; padding: 18px 14px 86px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-content: start; gap: 10px; }
+.thing { position: relative; min-width: 0; background: #fff; box-shadow: 0 1px 4px rgba(0,0,0,.14); }
+.thing img { display: block; width: 100%; height: auto; max-height: 220px; object-fit: contain; }
+.thing button { all: initial; position: absolute; top: 3px; right: 5px; font: 18px/1 Arial, sans-serif; color: rgba(40,40,38,.64); cursor: pointer; }
+.empty { grid-column: 1 / -1; min-height: 50vh; }
+footer { position: fixed; left: 0; right: 0; bottom: 0; min-height: 66px; padding: 13px 14px; background: rgba(246,244,238,.96); border-top: 1px solid rgba(30,30,26,.15); display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.destination { display: flex; align-items: center; gap: 5px; font-size: 12px; opacity: .62; }
+.destination button, #keep { all: initial; font-family: Georgia, 'Times New Roman', serif; cursor: pointer; }
+.destination button { font-size: 12px; opacity: .45; }
+.destination button.active { opacity: 1; text-decoration: underline; text-underline-offset: 3px; }
+#keep { font-size: 17px; letter-spacing: .02em; }
+#keep:disabled { opacity: .35; cursor: default; }
+.status { grid-column: 1 / -1; font-size: 12px; opacity: .6; padding-top: 4px; }
