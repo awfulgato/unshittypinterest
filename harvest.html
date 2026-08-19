@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Eskja harvest</title>
+<style>
+html,body{margin:0;min-height:100%;background:#000;color:#fff;font:14px/1.45 Arial,sans-serif}main{max-width:700px;margin:12vh auto;padding:28px}h1{font:400 28px/1.1 Arial;margin:0 0 28px}.install{display:inline-block;background:#fff;color:#000;border:1px solid #fff;padding:12px 18px;text-decoration:none;cursor:grab}.install.loading{opacity:.45;pointer-events:none}p{max-width:520px;color:#bbb;margin:18px 0}.small{font-size:12px;color:#777}button{background:transparent;color:#bbb;border:1px solid #555;padding:7px 10px;cursor:pointer}
+</style>
+</head>
+<body><main>
+<h1>harvest</h1>
+<a id="install" class="install loading" href="#">loading…</a>
+<p>Drag <strong>harvest</strong> to your bookmarks bar. That is the entire install. Nothing is downloaded to your computer.</p>
+<p class="small">Current adapters: Instagram profiles/carousels, Depop profiles and lazy-loaded inventory, Squarespace image libraries, Shopify/Wayback image recovery, plus ordinary webpage images.</p>
+<button id="copy" type="button" disabled>copy bookmark instead</button>
+<script>
+(async () => {
+  const install = document.getElementById('install');
+  const copy = document.getElementById('copy');
+  try {
+    const source = (await fetch('/harvest-bookmarklet.js', { cache: 'no-store' }).then(r => {
+      if (!r.ok) throw new Error('load failed');
+      return r.text();
+    })).trim();
+    const href = `javascript:${source}`;
+    install.setAttribute('href', href);
+    install.textContent = 'harvest';
+    install.classList.remove('loading');
+    copy.disabled = false;
+    copy.onclick = () => navigator.clipboard.writeText(href);
+  } catch (_) {
+    install.textContent = 'could not load';
+  }
+})();
+</script>
+</main></body></html>
