@@ -1,109 +1,282 @@
 (() => {
-  const MIN_SIZE = 36;
-  let currentImage = null;
+  const MIN_IMAGE_SIZE = 28;
+  let active = false;
   let busy = false;
+  let currentKind = null;
+  let currentImage = null;
+  let currentText = null;
+  let selectionTimer = null;
 
-  const sickle = document.createElement('button');
-  sickle.type = 'button';
-  sickle.id = 'eskja-harvest-sickle';
-  sickle.setAttribute('aria-label', 'gather image');
-  sickle.innerHTML = normalSickle();
-  document.documentElement.appendChild(sickle);
+  const segl = document.createElement('button');
+  segl.type = 'button';
+  segl.id = 'eskja-segl';
+  segl.setAttribute('aria-label', 'segl this thing');
+  segl.textContent = 'S';
+  document.documentElement.appendChild(segl);
+
+  const activeMarker = document.createElement('div');
+  activeMarker.id = 'eskja-segl-active';
+  activeMarker.textContent = 'SEGL';
+  document.documentElement.appendChild(activeMarker);
+
+  browser.runtime.onMessage.addListener(message => {
+    if (message?.type === 'segl-set-active') {
+      setActive(!!message.active);
+      return Promise.resolve({ ok: true, active });
+    }
+    return undefined;
+  });
+
+  browser.runtime.sendMessage({ type: 'segl-status' })
+    .then(result => setActive(!!result?.active))
+    .catch(() => setActive(false));
 
   document.addEventListener('pointerover', event => {
+    if (!active || busy) return;
     const image = event.target?.closest?.('img');
-    if (!image || image.closest('#eskja-harvest-sickle')) return;
-    const rect = image.getBoundingClientRect();
-    if (rect.width < MIN_SIZE || rect.height < MIN_SIZE || rect.bottom <= 0 || rect.top >= innerHeight) return;
+    if (!image || image === segl || image.closest?.('#eskja-segl')) return;
+    if (!isUsableImage(image)) return;
+    currentKind = 'image';
     currentImage = image;
-    showSickle(image);
+    currentText = null;
+    showForImage(image);
   }, true);
 
   document.addEventListener('pointermove', event => {
-    if (!currentImage || busy) return;
-    if (event.target === sickle || sickle.contains(event.target)) return;
-    if (event.target === currentImage || currentImage.contains?.(event.target)) return;
+    if (!active || busy || currentKind !== 'image' || !currentImage) return;
+    if (event.target === segl || segl.contains(event.target)) return;
     const rect = currentImage.getBoundingClientRect();
-    if (event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom) hideSickle();
+    if (event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom) {
+      hideSegl();
+    }
   }, true);
 
-  window.addEventListener('scroll', () => currentImage && showSickle(currentImage), { passive: true });
-  window.addEventListener('resize', () => currentImage && showSickle(currentImage), { passive: true });
+  document.addEventListener('selectionchange', () => {
+    if (!active || busy || currentKind === 'image') return;
+    clearTimeout(selectionTimer);
+    selectionTimer = setTimeout(updateTextSelection, 35);
+  }, true);
 
-  sickle.addEventListener('pointerdown', event => {
+  document.addEventListener('pointerup', event => {
+    if (!active || busy || event.target === segl || segl.contains(event.target)) return;
+    setTimeout(updateTextSelection, 0);
+  }, true);
+
+  document.addEventListener('keyup', () => {
+    if (!active || busy) return;
+    setTimeout(updateTextSelection, 0);
+  }, true);
+
+  window.addEventListener('scroll', () => {
+    if (!active || busy) return;
+    if (currentKind === 'image' && currentImage) showForImage(currentImage);
+    else if (currentKind === 'text') updateTextSelection();
+  }, { passive: true });
+
+  window.addEventListener('resize', () => {
+    if (!active || busy) return;
+    if (currentKind === 'image' && currentImage) showForImage(currentImage);
+    else if (currentKind === 'text') updateTextSelection();
+  }, { passive: true });
+
+  segl.addEventListener('pointerdown', event => {
     event.preventDefault();
     event.stopPropagation();
   });
 
-  sickle.addEventListener('click', async event => {
+  segl.addEventListener('click', async event => {
     event.preventDefault();
     event.stopPropagation();
-    if (!currentImage || busy) return;
+    if (!active || busy || !currentKind) return;
 
     busy = true;
-    sickle.classList.add('working');
-    sickle.innerHTML = normalSickle();
+    segl.classList.add('working');
+    segl.textContent = 'S';
 
-    const rect = currentImage.getBoundingClientRect();
-    const src = currentImage.currentSrc || currentImage.src || '';
     try {
-      const result = await browser.runtime.sendMessage({
-        type: 'harvest-image',
-        src,
-        pageUrl: location.href,
-        naturalWidth: currentImage.naturalWidth || rect.width,
-        naturalHeight: currentImage.naturalHeight || rect.height,
-        viewportWidth: innerWidth,
-        viewportHeight: innerHeight,
-        rect: {
-          left: Math.max(0, rect.left),
-          top: Math.max(0, rect.top),
-          width: Math.min(rect.width, innerWidth - Math.max(0, rect.left)),
-          height: Math.min(rect.height, innerHeight - Math.max(0, rect.top))
-        }
-      });
+      let result;
+      if (currentKind === 'image' && currentImage) {
+        result = await browser.runtime.sendMessage(buildImageMessage(currentImage));
+      } else if (currentKind === 'text' && currentText?.text) {
+        result = await browser.runtime.sendMessage({
+          type: 'segl-text',
+          text: currentText.text,
+          pageUrl: location.href,
+          pageTitle: document.title || ''
+        });
+      }
 
       if (result?.ok) {
-        sickle.classList.add('gathered');
+        segl.classList.remove('failed');
+        segl.classList.add('kept');
+        segl.textContent = '✓';
         setTimeout(() => {
-          sickle.classList.remove('gathered');
-          hideSickle();
-        }, 420);
+          segl.classList.remove('kept');
+          hideSegl();
+        }, 650);
       } else {
-        sickle.classList.add('broken');
-        sickle.innerHTML = brokenSickle();
+        throw new Error(result?.reason || 'could not keep thing');
       }
     } catch (error) {
-      console.error(error);
-      sickle.classList.add('broken');
-      sickle.innerHTML = brokenSickle();
+      console.error('Segl failed', error);
+      segl.classList.add('failed');
+      segl.textContent = '×';
     } finally {
       busy = false;
-      sickle.classList.remove('working');
+      segl.classList.remove('working');
     }
   });
 
-  function showSickle(image) {
+  function setActive(next) {
+    active = next;
+    activeMarker.classList.toggle('visible', active);
+    document.documentElement.classList.toggle('eskja-segl-on', active);
+    if (!active) hideSegl();
+  }
+
+  function isUsableImage(image) {
     const rect = image.getBoundingClientRect();
-    if (rect.width < MIN_SIZE || rect.height < MIN_SIZE || rect.bottom <= 0 || rect.top >= innerHeight) return hideSickle();
-    const top = Math.max(6, Math.min(innerHeight - 34, rect.top + 8));
-    const left = Math.max(6, Math.min(innerWidth - 34, rect.left + 8));
-    sickle.style.transform = `translate(${Math.round(left)}px, ${Math.round(top)}px)`;
-    sickle.classList.add('visible');
-    if (!sickle.classList.contains('broken')) sickle.innerHTML = normalSickle();
+    return rect.width >= MIN_IMAGE_SIZE && rect.height >= MIN_IMAGE_SIZE && rect.bottom > 0 && rect.top < innerHeight && rect.right > 0 && rect.left < innerWidth;
   }
 
-  function hideSickle() {
+  function showForImage(image) {
+    if (!active || !isUsableImage(image)) return hideSegl();
+    const rect = image.getBoundingClientRect();
+    showAt(rect.left + 8, rect.top + 8);
+  }
+
+  function updateTextSelection() {
+    if (!active || busy) return;
+    const selection = window.getSelection();
+    const text = selection?.toString?.().trim() || '';
+    if (!selection || selection.rangeCount === 0 || selection.isCollapsed || !text) {
+      if (currentKind === 'text') hideSegl();
+      return;
+    }
+
+    const range = selection.getRangeAt(0);
+    const rect = range.getBoundingClientRect();
+    if (!rect || (!rect.width && !rect.height)) return;
+
+    currentKind = 'text';
     currentImage = null;
-    sickle.classList.remove('visible', 'broken', 'working');
-    sickle.innerHTML = normalSickle();
+    currentText = { text };
+    showAt(rect.right + 6, rect.top - 2);
   }
 
-  function normalSickle() {
-    return '<svg viewBox="0 0 32 32" aria-hidden="true"><path class="blade" d="M7.5 5.5c7.5 1 13.2 5.7 15.8 12.6-3.4-4.2-8.6-6.4-14.4-5.9 5.4 1.5 9.1 4.7 11.2 9.5-5.9-4.9-12.3-5.8-17-2.4 1.7-7 3-11.1 4.4-13.8Z"/><path class="handle" d="M19.5 19.5 27 27"/></svg>';
+  function showAt(left, top) {
+    const x = Math.max(6, Math.min(innerWidth - 38, left));
+    const y = Math.max(6, Math.min(innerHeight - 38, top));
+    segl.style.transform = `translate(${Math.round(x)}px, ${Math.round(y)}px)`;
+    segl.classList.remove('failed', 'kept');
+    segl.textContent = 'S';
+    segl.classList.add('visible');
   }
 
-  function brokenSickle() {
-    return '<svg viewBox="0 0 32 32" aria-hidden="true"><path class="blade" d="M7.5 5.5c7.5 1 13.2 5.7 15.8 12.6-3.4-4.2-8.6-6.4-14.4-5.9 5.4 1.5 9.1 4.7 11.2 9.5-5.9-4.9-12.3-5.8-17-2.4 1.7-7 3-11.1 4.4-13.8Z"/><path class="handle" d="m19.5 19.5 2.8 2.8m2 2L27 27"/><path class="break" d="m21.3 24.8 2.1-3.1"/></svg>';
+  function hideSegl() {
+    currentKind = null;
+    currentImage = null;
+    currentText = null;
+    segl.classList.remove('visible', 'failed', 'kept', 'working');
+    segl.textContent = 'S';
+  }
+
+  function buildImageMessage(image) {
+    const rect = image.getBoundingClientRect();
+    return {
+      type: 'segl-image',
+      pageUrl: location.href,
+      pageTitle: document.title || '',
+      candidates: collectImageCandidates(image),
+      naturalWidth: image.naturalWidth || rect.width,
+      naturalHeight: image.naturalHeight || rect.height,
+      viewportWidth: innerWidth,
+      viewportHeight: innerHeight,
+      rect: {
+        left: Math.max(0, rect.left),
+        top: Math.max(0, rect.top),
+        width: Math.max(1, Math.min(rect.width, innerWidth - Math.max(0, rect.left))),
+        height: Math.max(1, Math.min(rect.height, innerHeight - Math.max(0, rect.top)))
+      }
+    };
+  }
+
+  function collectImageCandidates(image) {
+    const found = new Map();
+
+    const add = (rawUrl, meta = {}) => {
+      if (!rawUrl) return;
+      let url;
+      try { url = new URL(String(rawUrl).trim(), location.href); }
+      catch (_) { return; }
+      if (!/^https?:$/i.test(url.protocol)) return;
+      const key = url.href;
+      const candidate = {
+        url: key,
+        declaredWidth: Number(meta.declaredWidth) || 0,
+        density: Number(meta.density) || 0,
+        priority: Number(meta.priority) || 0,
+        source: meta.source || 'unknown'
+      };
+      const old = found.get(key);
+      if (!old || candidateScore(candidate) > candidateScore(old)) found.set(key, candidate);
+    };
+
+    const addSrcset = (value, source, priority) => {
+      if (!value) return;
+      for (const rawPart of String(value).split(',')) {
+        const part = rawPart.trim();
+        if (!part) continue;
+        const bits = part.split(/\s+/);
+        const url = bits.shift();
+        let declaredWidth = 0;
+        let density = 0;
+        for (const descriptor of bits) {
+          if (/^\d+(?:\.\d+)?w$/i.test(descriptor)) declaredWidth = parseFloat(descriptor);
+          if (/^\d+(?:\.\d+)?x$/i.test(descriptor)) density = parseFloat(descriptor);
+        }
+        add(url, { declaredWidth, density, priority, source });
+      }
+    };
+
+    const picture = image.closest('picture');
+    if (picture) {
+      for (const sourceEl of picture.querySelectorAll('source')) {
+        const media = sourceEl.getAttribute('media');
+        if (media) {
+          try { if (!matchMedia(media).matches) continue; }
+          catch (_) {}
+        }
+        addSrcset(sourceEl.getAttribute('srcset'), 'picture-srcset', 85);
+        addSrcset(sourceEl.getAttribute('data-srcset'), 'picture-data-srcset', 90);
+        add(sourceEl.getAttribute('src'), { source: 'picture-src', priority: 75 });
+      }
+    }
+
+    addSrcset(image.getAttribute('srcset'), 'img-srcset', 80);
+    addSrcset(image.getAttribute('data-srcset'), 'img-data-srcset', 90);
+    add(image.getAttribute('data-original'), { source: 'data-original', priority: 95 });
+    add(image.getAttribute('data-full'), { source: 'data-full', priority: 95 });
+    add(image.getAttribute('data-image'), { source: 'data-image', priority: 90 });
+    add(image.getAttribute('data-src'), { source: 'data-src', priority: 88 });
+    add(image.getAttribute('data-lazy-src'), { source: 'data-lazy-src', priority: 86 });
+    add(image.currentSrc, { source: 'currentSrc', priority: 70, declaredWidth: image.naturalWidth || 0 });
+    add(image.src, { source: 'src', priority: 60, declaredWidth: image.naturalWidth || 0 });
+
+    const link = image.closest('a[href]');
+    if (link) {
+      try {
+        const linked = new URL(link.href, location.href);
+        if (/\.(?:avif|gif|jpe?g|png|webp|svg)(?:$|[?#])/i.test(linked.href)) {
+          add(linked.href, { source: 'linked-image', priority: 100 });
+        }
+      } catch (_) {}
+    }
+
+    return [...found.values()].sort((a, b) => candidateScore(b) - candidateScore(a));
+  }
+
+  function candidateScore(candidate) {
+    return (candidate.declaredWidth || 0) * 100000 + (candidate.density || 0) * 1000 + (candidate.priority || 0);
   }
 })();
