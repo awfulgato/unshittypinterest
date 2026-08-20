@@ -1,8 +1,8 @@
 {
   "manifest_version": 2,
-  "name": "Eskja Harvest",
-  "version": "0.1.0",
-  "description": "Gather image things from the web and keep them in Eskja.",
+  "name": "Eskja Segl v0",
+  "version": "0.2.0",
+  "description": "Pilot Segl: gather selected text and hovered images directly into a test Eskja.",
   "permissions": [
     "<all_urls>",
     "activeTab",
@@ -13,11 +13,7 @@
     "scripts": ["background.js"]
   },
   "browser_action": {
-    "default_title": "Eskja harvest"
-  },
-  "sidebar_action": {
-    "default_title": "Eskja",
-    "default_panel": "sidebar.html"
+    "default_title": "Turn Segl on"
   },
   "content_scripts": [
     {
@@ -30,7 +26,7 @@
   ],
   "browser_specific_settings": {
     "gecko": {
-      "id": "harvest@eskja.local",
+      "id": "segl@eskja.local",
       "strict_min_version": "109.0"
     }
   }
