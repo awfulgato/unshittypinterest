@@ -1,51 +1,73 @@
 const SUPABASE_URL = 'https://bshkvgdebluhmuxjpbiw.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_tV6ipeRw37DyNTm2iBl17Q_YmaLScc_';
 const STORAGE_BUCKET = 'board-images';
+const TEST_BOARD = 'segl-test';
 const MAX_THING_BYTES = 25 * 1024 * 1024;
 
-let bag = [];
+const activeTabs = new Set();
 
-browser.browserAction.onClicked.addListener(async () => {
-  try { await browser.sidebarAction.open(); } catch (error) { console.error(error); }
+browser.browserAction.onClicked.addListener(async tab => {
+  if (!tab?.id) return;
+  const next = !activeTabs.has(tab.id);
+  if (next) activeTabs.add(tab.id);
+  else activeTabs.delete(tab.id);
+  await syncBadge(tab.id, next);
+  try {
+    await browser.tabs.sendMessage(tab.id, { type: 'segl-set-active', active: next });
+  } catch (error) {
+    console.warn('Segl could not reach this page', error);
+  }
 });
 
+browser.tabs.onRemoved.addListener(tabId => activeTabs.delete(tabId));
+
 browser.runtime.onMessage.addListener((message, sender) => {
-  if (!message || !message.type) return undefined;
+  if (!message?.type) return undefined;
 
   switch (message.type) {
-    case 'harvest-image':
-      return harvestImage(message, sender);
-    case 'bag-list':
-      return Promise.resolve(publicBag());
-    case 'bag-remove':
-      bag = bag.filter(item => item.id !== message.id);
-      return Promise.resolve(publicBag());
-    case 'bag-clear':
-      bag = [];
-      return Promise.resolve(publicBag());
-    case 'keep':
-      return keepBag(message.board === 'wyf' ? 'wyf' : 'husbond');
+    case 'segl-status':
+      return Promise.resolve({ active: !!sender.tab?.id && activeTabs.has(sender.tab.id) });
+    case 'segl-image':
+      return gatherAndKeepImage(message, sender);
+    case 'segl-text':
+      return gatherAndKeepText(message);
     default:
       return undefined;
   }
 });
 
-function publicBag() {
-  return bag.map(({ blob, ...item }) => item);
+async function syncBadge(tabId, active) {
+  try {
+    await browser.browserAction.setBadgeBackgroundColor({ tabId, color: '#e00000' });
+    await browser.browserAction.setBadgeText({ tabId, text: active ? 'ON' : '' });
+    await browser.browserAction.setTitle({ tabId, title: active ? 'Segl is on — click to turn off' : 'Turn Segl on' });
+  } catch (error) {
+    console.warn('Segl badge update failed', error);
+  }
 }
 
-async function harvestImage(message, sender) {
-  const id = crypto.randomUUID();
-  const sourceUrl = message.src || '';
-  let acquired;
+async function gatherAndKeepImage(message, sender) {
+  const candidates = normalizeCandidates(message.candidates);
+  let acquired = null;
+  const failures = [];
 
-  try {
-    acquired = await retrieveImage(sourceUrl, message.pageUrl);
-  } catch (directError) {
+  for (const candidate of candidates) {
+    try {
+      acquired = await retrieveImage(candidate.url, message.pageUrl);
+      acquired.sourceUrl = candidate.url;
+      acquired.candidate = candidate;
+      break;
+    } catch (error) {
+      failures.push({ url: candidate.url, error: error?.message || String(error) });
+    }
+  }
+
+  if (!acquired) {
     try {
       acquired = await captureRenderedImage(sender.tab, message);
+      acquired.sourceUrl = candidates[0]?.url || '';
     } catch (captureError) {
-      console.warn('Eskja could not gather image', { directError, captureError });
+      console.warn('Segl could not gather image', { failures, captureError });
       return { ok: false, reason: 'unharvestable' };
     }
   }
@@ -54,34 +76,88 @@ async function harvestImage(message, sender) {
     return { ok: false, reason: 'unharvestable' };
   }
 
-  const dataUrl = await blobToDataUrl(acquired.blob);
-  const item = {
-    id,
-    blob: acquired.blob,
-    preview: dataUrl,
-    sourceUrl,
-    pageUrl: message.pageUrl || '',
-    acquisition: acquired.method,
-    mime: acquired.blob.type || 'image/png',
-    filename: acquired.filename || filenameFromUrl(sourceUrl, acquired.blob.type),
-    width: acquired.width || message.naturalWidth || message.rect?.width || 300,
-    height: acquired.height || message.naturalHeight || message.rect?.height || 200,
-    gatheredAt: Date.now()
+  try {
+    const measured = await measureBlob(acquired.blob).catch(() => null);
+    const width = measured?.width || acquired.width || message.naturalWidth || message.rect?.width || 300;
+    const height = measured?.height || acquired.height || message.naturalHeight || message.rect?.height || 200;
+    const filename = acquired.filename || filenameFromUrl(acquired.sourceUrl, acquired.blob.type);
+    const kept = await persistImage({
+      blob: acquired.blob,
+      filename,
+      mime: acquired.blob.type || 'image/png',
+      width,
+      height,
+      sourceUrl: acquired.sourceUrl || '',
+      pageUrl: message.pageUrl || '',
+      acquisition: acquired.method
+    });
+    return { ok: true, board: TEST_BOARD, acquisition: acquired.method, sourceUrl: acquired.sourceUrl || '', ...kept };
+  } catch (error) {
+    console.error('Segl image keep failed', error);
+    return { ok: false, reason: error?.message || 'keep failed' };
+  }
+}
+
+async function gatherAndKeepText(message) {
+  const text = String(message.text || '').trim();
+  if (!text) return { ok: false, reason: 'empty text' };
+
+  const slot = placementSlot();
+  const row = {
+    id: crypto.randomUUID(),
+    board: TEST_BOARD,
+    type: 'note',
+    src: /^https?:/i.test(message.pageUrl || '') ? message.pageUrl : null,
+    storage_path: null,
+    text,
+    x: slot.x,
+    y: slot.y,
+    width: 360,
+    height: Math.max(110, Math.min(360, 80 + Math.ceil(text.length / 45) * 22)),
+    grayscale: 0,
+    z: zNow()
   };
 
-  bag.push(item);
-  return { ok: true, item: publicBag().find(entry => entry.id === id), count: bag.length };
+  try {
+    await insertBoardRow(row);
+    return { ok: true, board: TEST_BOARD, id: row.id, kind: 'text' };
+  } catch (error) {
+    console.error('Segl text keep failed', error);
+    return { ok: false, reason: error?.message || 'keep failed' };
+  }
+}
+
+function normalizeCandidates(rawCandidates) {
+  const unique = new Map();
+  for (const raw of Array.isArray(rawCandidates) ? rawCandidates : []) {
+    if (!raw?.url || !/^https?:/i.test(raw.url)) continue;
+    const candidate = {
+      url: raw.url,
+      declaredWidth: Number(raw.declaredWidth) || 0,
+      density: Number(raw.density) || 0,
+      priority: Number(raw.priority) || 0,
+      source: raw.source || 'unknown'
+    };
+    const old = unique.get(candidate.url);
+    if (!old || candidateScore(candidate) > candidateScore(old)) unique.set(candidate.url, candidate);
+  }
+  return [...unique.values()].sort((a, b) => candidateScore(b) - candidateScore(a));
+}
+
+function candidateScore(candidate) {
+  return (candidate.declaredWidth || 0) * 100000 + (candidate.density || 0) * 1000 + (candidate.priority || 0);
 }
 
 async function retrieveImage(url, pageUrl) {
   if (!/^https?:/i.test(url)) throw new Error('Image has no retrievable URL');
 
-  const response = await fetch(url, {
+  const options = {
     credentials: 'include',
-    cache: 'force-cache',
-    referrer: /^https?:/i.test(pageUrl || '') ? pageUrl : undefined
-  });
+    cache: 'force-cache'
+  };
+  if (/^https?:/i.test(pageUrl || '')) options.referrer = pageUrl;
 
+  const response = await fetch(url, options);
   if (!response.ok) throw new Error(`Image request failed (${response.status})`);
   const blob = await response.blob();
   if (!blob.type.startsWith('image/')) throw new Error('Resource is not an image');
@@ -121,38 +197,16 @@ async function captureRenderedImage(tab, message) {
   return {
     blob,
     method: 'visual-capture',
-    filename: `eskja-${Date.now()}.png`,
-    width: Math.round(rect.width),
-    height: Math.round(rect.height)
+    filename: `segl-${Date.now()}.png`,
+    width: sw,
+    height: sh
   };
 }
 
-async function keepBag(board) {
-  if (!bag.length) return { ok: true, kept: 0, remaining: 0 };
-
-  const pending = [...bag];
-  const keptIds = [];
-  const failures = [];
-
-  for (let index = 0; index < pending.length; index += 1) {
-    const item = pending[index];
-    try {
-      await keepOne(item, board, index);
-      keptIds.push(item.id);
-    } catch (error) {
-      console.error('Eskja keep failed', error);
-      failures.push({ id: item.id, message: error?.message || 'keep failed' });
-    }
-  }
-
-  bag = bag.filter(item => !keptIds.includes(item.id));
-  return { ok: failures.length === 0, kept: keptIds.length, remaining: bag.length, failures };
-}
-
-async function keepOne(item, board, index) {
+async function persistImage(item) {
   const id = crypto.randomUUID();
   const ext = extensionFor(item.filename, item.mime);
-  const storagePath = `${board}/${id}.${ext}`;
+  const storagePath = `${TEST_BOARD}/${id}.${ext}`;
   const objectUrl = `${SUPABASE_URL}/storage/v1/object/${encodePath(STORAGE_BUCKET)}/${encodePath(storagePath)}`;
 
   const upload = await fetch(objectUrl, {
@@ -167,28 +221,39 @@ async function keepOne(item, board, index) {
   });
   if (!upload.ok) throw new Error(`Storage upload failed (${upload.status})`);
 
+  const slot = placementSlot();
   const maxWidth = 500;
   const sourceWidth = Math.max(1, Number(item.width) || 300);
   const sourceHeight = Math.max(1, Number(item.height) || 200);
   const width = Math.min(sourceWidth, maxWidth);
   const height = width * sourceHeight / sourceWidth;
-  const offset = 20 + (index % 8) * 18;
 
   const row = {
     id,
-    board,
+    board: TEST_BOARD,
     type: 'image',
-    src: null,
+    src: /^https?:/i.test(item.sourceUrl || '') ? item.sourceUrl : null,
     storage_path: storagePath,
     text: '',
-    x: offset,
-    y: offset,
+    x: slot.x,
+    y: slot.y,
     width,
     height,
     grayscale: 0,
-    z: Date.now() % 2147483647
+    z: zNow()
   };
 
+  try {
+    await insertBoardRow(row);
+  } catch (error) {
+    await deleteStorageObject(storagePath).catch(() => {});
+    throw error;
+  }
+
+  return { id, kind: 'image', storagePath };
+}
+
+async function insertBoardRow(row) {
   const insert = await fetch(`${SUPABASE_URL}/rest/v1/board_items`, {
     method: 'POST',
     headers: {
@@ -199,7 +264,33 @@ async function keepOne(item, board, index) {
     },
     body: JSON.stringify(row)
   });
-  if (!insert.ok) throw new Error(`Board insert failed (${insert.status})`);
+  if (!insert.ok) {
+    const detail = await insert.text().catch(() => '');
+    throw new Error(`Board insert failed (${insert.status})${detail ? `: ${detail}` : ''}`);
+  }
+}
+
+async function deleteStorageObject(storagePath) {
+  const objectUrl = `${SUPABASE_URL}/storage/v1/object/${encodePath(STORAGE_BUCKET)}/${encodePath(storagePath)}`;
+  await fetch(objectUrl, {
+    method: 'DELETE',
+    headers: {
+      apikey: SUPABASE_ANON_KEY,
+      Authorization: `Bearer ${SUPABASE_ANON_KEY}`
+    }
+  });
+}
+
+function placementSlot() {
+  const slot = Math.floor(Date.now() / 700) % 12;
+  return {
+    x: 30 + (slot % 4) * 42,
+    y: 30 + Math.floor(slot / 4) * 42
+  };
+}
+
+function zNow() {
+  return Date.now() % 2147483647;
 }
 
 function filenameFromResponse(response, url, mime) {
@@ -218,7 +309,7 @@ function filenameFromUrl(url, mime) {
     const last = pathname.split('/').filter(Boolean).pop();
     if (last && /\.[a-z0-9]{2,5}$/i.test(last)) return last;
   } catch (_) {}
-  return `eskja-${Date.now()}.${extensionFor('', mime)}`;
+  return `segl-${Date.now()}.${extensionFor('', mime)}`;
 }
 
 function extensionFor(filename, mime) {
@@ -235,12 +326,20 @@ function encodePath(path) {
   return String(path).split('/').map(encodeURIComponent).join('/');
 }
 
-function blobToDataUrl(blob) {
+function measureBlob(blob) {
   return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result);
-    reader.onerror = reject;
-    reader.readAsDataURL(blob);
+    const url = URL.createObjectURL(blob);
+    const image = new Image();
+    image.onload = () => {
+      const result = { width: image.naturalWidth, height: image.naturalHeight };
+      URL.revokeObjectURL(url);
+      resolve(result);
+    };
+    image.onerror = error => {
+      URL.revokeObjectURL(url);
+      reject(error);
+    };
+    image.src = url;
   });
 }
 
