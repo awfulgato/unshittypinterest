@@ -64,6 +64,26 @@ sense is workshop/place of making, not contemporary online shopping.
 The act of entrusting a digital thing to Eskja Shop to be given a
 particular physical existence.
 
+### segl
+
+The browser gathering implement: a sickle. Segl is the thing the user
+reaches for when they encounter something worth gathering away from
+Eskja.
+
+Segl names the implement rather than a software operation. The user does
+not need to think in terms of scraping, downloading, extraction,
+retrieval, capture methods, or site-specific adapters. They see a thing,
+reach for Segl, and gather it.
+
+### poki
+
+The temporary bag carried while gathering away from Eskja.
+
+Poki is not an eskja and must not become one. It is a light, temporary
+holding place for things gathered during the current excursion, plus
+quick scraps or notes the user chooses to add. Arrangement and deeper
+organization happen after returning home.
+
 ## spatial grammar
 
 ### storeskja
@@ -292,29 +312,52 @@ participate in helping people keep their things.
 When the Shop is at capacity, the books close. It does not automate care
 merely to increase throughput.
 
-## browser gathering tool
+## segl / browser gathering tool
 
-The browser tool is a gathering aid, not Eskja in a sidebar and not an alternate place to build.
+Segl is a gathering aid, not Eskja in a sidebar and not an alternate
+place to build.
+
+The governing metaphor is physical gathering. The field is already
+there. Segl does not scan every possible thing merely because it can.
+The user notices a thing, reaches for it, gathers it, carries it in poki,
+and later brings it home to Eskja.
 
 ### purpose
 
 - It exists only to gather things encountered while away from the storeskja and carry them home.
-- The side panel is a temporary bag/scratchpad, visually and functionally distinct from an eskja.
-- It must be immediately clear that the panel is for quick capture, not organization.
-- No storeskja navigation, eskja navigation, boards, spatial arrangement, resizing, nesting, entrances, saturation controls, or other major Eskja editing features belong in the panel.
+- Poki is a temporary bag/scratchpad, visually and functionally distinct from an eskja.
+- It must be immediately clear that poki is for quick carrying, not organization.
+- No storeskja navigation, eskja navigation, boards, spatial arrangement, resizing, nesting, entrances, saturation controls, or other major Eskja editing features belong in poki.
 - The user gathers while away and arranges only after returning to the storeskja.
-- The bag may contain gathered images, selected text, links where appropriate as source/provenance information, and quick scraps of user-written text.
+- Poki may contain gathered images, selected text, links where appropriate as source/provenance information, and quick scraps of user-written text.
 - The final action is **keep**: send the gathered things home. Do not reuse `keep` for the act of gathering individual things.
+- By default, `keep` sends the current contents of poki into a new eskja. Things gathered together should arrive home together unless the user explicitly chooses otherwise.
 
 ### gathering interaction
 
-- Opening the browser tool opens the side bag and enables gathering affordances on the current webpage.
-- Hovering a harvestable image reveals a small hand-sickle glyph.
+- Segl should remain nearly invisible until the user reaches for a thing.
+- Hovering a harvestable image reveals the small Segl sickle glyph.
 - Selecting actual webpage text reveals the same sickle glyph near the selection.
-- Clicking the sickle gathers the thing directly into the bag.
+- Clicking the sickle gathers that one thing directly into poki and opens the poki sidebar if it is not already open.
+- Once poki is open, the user may gather more things, add quick notes/scraps, remove accidental gathers, or simply press `keep`.
 - Gathering should require no download, Save As dialog, file picker, right-click menu, or intermediate file on the user's device.
-- The sickle represents the user's action -- **gather** -- not the technical acquisition method.
+- Segl represents the user's action -- **gather** -- not the technical acquisition method.
 - Eskja should expose outcomes, not acquisition methods.
+
+### effort budget / performance
+
+Segl must feel light, nimble, and immediate. Smoothness is part of the
+product, not an optimization to add later.
+
+- **Hover should be nearly free.** Determine only whether the thing under the pointer is recognizable enough to offer Segl. Do not crawl, prefetch, decode alternates, or inspect the rest of the page.
+- **Gather only the chosen thing.** A page containing hundreds or thousands of possible things is not a reason to enumerate them.
+- Prefer information and resources the browser has already loaded or already knows about.
+- Platform-specific adapters may interpret a chosen thing when necessary, but should wake only for that thing and only when needed.
+- Expensive enrichment should be deferred. Resolution probing, alternate-source recovery, archival lookup, or other heavier work should happen only when required to gather successfully, when the user explicitly asks to open/recover a better representation, or during final persistence if appropriate.
+- Do not probe multiple speculative variants merely to populate poki thumbnails.
+- Poki previews should use a cheap already-available rendition when possible; the preview does not need to be the highest-resolution representation.
+- The normal Segl product must not automatically scan profiles, crawl pages, auto-scroll feeds, or index every possible item. Research bookmarklets may do those things as separate tools, but that behavior is not the default Eskja gathering model.
+- Segl should do as little work as possible before intent, the minimum necessary work after intent, and no work for things the user never chooses.
 
 ### acquisition
 
@@ -430,3 +473,5 @@ when it cannot give submitted things appropriate care.
 - Versioning: v0.1 is the known-good baseline. Sequential releases v0.2, v0.3, etc.; patch releases v0.2.1, etc.
 
 **2026-08-12** - Browser gathering tool: the side panel is a temporary bag, not Eskja in a sidebar. Users gather while away and arrange only after returning to the storeskja. A hand-sickle glyph gathers compatible images and selected webpage text; `keep` is reserved for sending the gathered things home. Acquisition method is hidden from the user: direct retrieval and constrained visual capture of a recognized image are equivalent successful harvests. A broken sickle appears only after gathering truly fails. Visual capture is image-specific, never a general screenshot tool. Eskja preserves source-object type: webpage text remains text, images remain images, and text depicted inside an image does not cause OCR/reclassification. Eskja does not store whole websites, webpages, interfaces, applications, dashboards, or screenshots of them. The governing constraint is: Eskja is strict about what enters and permissive about what happens after it enters.
+
+**2026-08-19** - Name the browser gathering implement **Segl** and the temporary carrying bag **poki**. The core interaction is physical gathering rather than crawling: the field is already there; the user notices a thing, reaches for Segl, gathers it, carries it in poki, and brings it home. Hover must be nearly free. Clicking Segl gathers only the chosen thing and opens poki with that thing already inside. Poki may carry additional gathered things and quick notes. `keep` sends the current poki home, by default into a new eskja so things gathered together arrive together. Segl must not scan, prefetch, probe, or enumerate the rest of a page merely because it can. Prefer browser-known resources; defer expensive resolution/source recovery until necessary or explicitly requested. Research bookmarklets that crawl profiles/pages are prototypes and utilities, not the default Segl product behavior.
