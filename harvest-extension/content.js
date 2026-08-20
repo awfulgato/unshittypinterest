@@ -277,6 +277,6 @@
   }
 
   function candidateScore(candidate) {
-    return (candidate.declaredWidth || 0) * 100000 + (candidate.density || 0) * 1000 + (candidate.priority || 0);
+    return (candidate.priority || 0) * 1000000000 + (candidate.declaredWidth || 0) * 1000 + (candidate.density || 0);
   }
 })();
