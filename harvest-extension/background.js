@@ -2,63 +2,72 @@ const SUPABASE_URL = 'https://bshkvgdebluhmuxjpbiw.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_tV6ipeRw37DyNTm2iBl17Q_YmaLScc_';
 const STORAGE_BUCKET = 'board-images';
 const TEST_BOARD = 'segl-test';
-const POKI_KEY = 'eskjaPokiV0';
 const MAX_THING_BYTES = 25 * 1024 * 1024;
 
-const activeTabs = new Set();
-
-browser.browserAction.onClicked.addListener(async tab => {
-  if (!tab?.id) return;
-  const next = !activeTabs.has(tab.id);
-  if (next) activeTabs.add(tab.id);
-  else activeTabs.delete(tab.id);
-  await syncBadge(tab.id, next);
-  try {
-    await browser.tabs.sendMessage(tab.id, { type: 'segl-set-active', active: next });
-  } catch (error) {
-    console.warn('Segl could not reach this page', error);
-  }
+let seglActive = false;
+let poki = [];
+const initState = browser.storage.local.get(['seglActive', 'pokiItems']).then(saved => {
+  seglActive = !!saved.seglActive;
+  poki = Array.isArray(saved.pokiItems) ? saved.pokiItems : [];
+}).catch(() => {
+  seglActive = false;
+  poki = [];
 });
 
-browser.tabs.onRemoved.addListener(tabId => activeTabs.delete(tabId));
+initState.then(() => syncBadge());
 
 browser.runtime.onMessage.addListener((message, sender) => {
   if (!message?.type) return undefined;
 
   switch (message.type) {
     case 'segl-status':
-      return Promise.resolve({ active: !!sender.tab?.id && activeTabs.has(sender.tab.id) });
+      return withState(async () => ({ ok: true, active: seglActive }));
+    case 'segl-set-global-active':
+      return withState(async () => {
+        await setGlobalActive(!!message.active);
+        return { ok: true, active: seglActive, count: poki.length };
+      });
+    case 'segl-toggle-global-active':
+      return withState(async () => {
+        await setGlobalActive(!seglActive);
+        return { ok: true, active: seglActive, count: poki.length };
+      });
     case 'segl-image':
-      return gatherImageToPoki(message, sender);
+      return withState(async () => addImageToPoki(message, sender));
     case 'segl-text':
-      return gatherTextToPoki(message, sender);
+      return withState(async () => addTextToPoki(message));
     case 'poki-list':
-      return getPoki();
+      return withState(async () => ({ ok: true, active: seglActive, count: poki.length, items: publicPoki() }));
     case 'poki-remove':
-      return removeFromPoki(message.id);
+      return withState(async () => removeFromPoki(message.id));
     case 'poki-clear':
-      return clearPoki();
+      return withState(async () => clearPoki());
     case 'poki-keep':
-      return keepPoki();
+      return withState(async () => keepPoki(TEST_BOARD));
     default:
       return undefined;
   }
 });
 
-async function syncBadge(tabId, active) {
-  try {
-    await browser.browserAction.setBadgeBackgroundColor({ tabId, color: '#e00000' });
-    await browser.browserAction.setBadgeText({ tabId, text: active ? 'ON' : '' });
-    await browser.browserAction.setTitle({ tabId, title: active ? 'Segl is on — click to turn off' : 'Turn Segl on' });
-  } catch (error) {
-    console.warn('Segl badge update failed', error);
-  }
+browser.tabs.onRemoved.addListener(async () => {
+  await withState(async () => purgeDeadCaptureContexts());
+});
+
+async function withState(fn) {
+  await initState;
+  return fn();
 }
 
-async function gatherImageToPoki(message, sender) {
-  const candidates = normalizeCandidates(message.candidates);
-  if (!candidates.length && !message.rect) return { ok: false, reason: 'image has no usable source' };
+async function setGlobalActive(next) {
+  seglActive = !!next;
+  await persistState();
+  await broadcastSeglState();
+  await syncBadge();
+  await notifyPopup();
+}
 
+async function addImageToPoki(message, sender) {
+  const candidates = normalizeCandidates(message.candidates);
   const item = {
     id: crypto.randomUUID(),
     type: 'image',
@@ -70,149 +79,126 @@ async function gatherImageToPoki(message, sender) {
     viewportWidth: Number(message.viewportWidth) || 0,
     viewportHeight: Number(message.viewportHeight) || 0,
     rect: normalizeRect(message.rect),
-    tabId: sender.tab?.id || null,
-    windowId: sender.tab?.windowId || null,
-    gatheredAt: Date.now()
+    tabId: sender.tab?.id ?? null,
+    windowId: sender.tab?.windowId ?? null,
+    createdAt: Date.now()
   };
-
-  const items = await appendToPoki(item);
-  await openPoki().catch(() => {});
-  return { ok: true, kind: 'image', id: item.id, count: items.length };
+  poki.push(item);
+  await persistState();
+  await syncBadge();
+  await notifyPopup();
+  return { ok: true, gathered: true, id: item.id, count: poki.length };
 }
 
-async function gatherTextToPoki(message, sender) {
+async function addTextToPoki(message) {
   const text = String(message.text || '').trim();
   if (!text) return { ok: false, reason: 'empty text' };
-
   const item = {
     id: crypto.randomUUID(),
     type: 'text',
     text,
     pageUrl: message.pageUrl || '',
     pageTitle: message.pageTitle || '',
-    tabId: sender.tab?.id || null,
-    gatheredAt: Date.now()
+    createdAt: Date.now()
   };
-
-  const items = await appendToPoki(item);
-  await openPoki().catch(() => {});
-  return { ok: true, kind: 'text', id: item.id, count: items.length };
-}
-
-async function openPoki() {
-  if (!browser.sidebarAction?.open) return;
-  await browser.sidebarAction.open();
-}
-
-async function getPoki() {
-  const saved = await browser.storage.local.get(POKI_KEY);
-  return Array.isArray(saved[POKI_KEY]) ? saved[POKI_KEY] : [];
-}
-
-async function setPoki(items) {
-  await browser.storage.local.set({ [POKI_KEY]: items });
-  return items;
-}
-
-async function appendToPoki(item) {
-  const items = await getPoki();
-  items.push(item);
-  return setPoki(items);
+  poki.push(item);
+  await persistState();
+  await syncBadge();
+  await notifyPopup();
+  return { ok: true, gathered: true, id: item.id, count: poki.length };
 }
 
 async function removeFromPoki(id) {
-  const items = (await getPoki()).filter(item => item.id !== id);
-  return setPoki(items);
+  const before = poki.length;
+  poki = poki.filter(item => item.id !== id);
+  if (poki.length !== before) {
+    await persistState();
+    await syncBadge();
+    await notifyPopup();
+  }
+  return { ok: true, active: seglActive, count: poki.length, items: publicPoki() };
 }
 
 async function clearPoki() {
-  return setPoki([]);
+  if (poki.length) {
+    poki = [];
+    await persistState();
+    await syncBadge();
+    await notifyPopup();
+  }
+  return { ok: true, active: seglActive, count: poki.length, items: publicPoki() };
 }
 
-async function keepPoki() {
-  const pending = await getPoki();
-  if (!pending.length) return { ok: true, kept: 0, remaining: 0, failures: [] };
-
+async function keepPoki(board) {
   const keptIds = [];
   const failures = [];
 
-  for (let index = 0; index < pending.length; index += 1) {
-    const item = pending[index];
+  for (const item of [...poki]) {
     try {
-      if (item.type === 'text') await keepText(item, index);
-      else if (item.type === 'image') await keepImage(item, index);
-      else throw new Error(`unsupported poki item type: ${item.type || 'unknown'}`);
+      if (item.type === 'text') {
+        await keepTextItem(item, board);
+      } else if (item.type === 'image') {
+        await keepImageItem(item, board);
+      }
       keptIds.push(item.id);
     } catch (error) {
-      console.error('Poki keep failed', item, error);
-      failures.push({ id: item.id, reason: error?.message || 'keep failed' });
+      failures.push({ id: item.id, type: item.type, message: error?.message || 'keep failed' });
     }
   }
 
-  const remainingItems = pending.filter(item => !keptIds.includes(item.id));
-  await setPoki(remainingItems);
+  if (keptIds.length) {
+    poki = poki.filter(item => !keptIds.includes(item.id));
+    await persistState();
+    await syncBadge();
+    await notifyPopup();
+  }
 
   return {
     ok: failures.length === 0,
     kept: keptIds.length,
-    remaining: remainingItems.length,
+    remaining: poki.length,
     failures,
-    board: TEST_BOARD
+    active: seglActive,
+    count: poki.length,
+    items: publicPoki()
   };
 }
 
-async function keepText(item, index) {
-  const text = String(item.text || '').trim();
-  if (!text) throw new Error('empty text');
-
-  const slot = placementSlot(index);
+async function keepTextItem(item, board) {
+  const slot = placementSlot();
   const row = {
     id: crypto.randomUUID(),
-    board: TEST_BOARD,
+    board,
     type: 'note',
     src: /^https?:/i.test(item.pageUrl || '') ? item.pageUrl : null,
     storage_path: null,
-    text,
+    text: item.text,
     x: slot.x,
     y: slot.y,
     width: 360,
-    height: Math.max(110, Math.min(360, 80 + Math.ceil(text.length / 45) * 22)),
+    height: Math.max(110, Math.min(360, 80 + Math.ceil(String(item.text || '').length / 45) * 22)),
     grayscale: 0,
-    z: zNow(index)
+    z: zNow()
   };
-
   await insertBoardRow(row);
-  return row.id;
 }
 
-async function keepImage(item, index) {
-  const candidates = normalizeCandidates(item.candidates);
+async function keepImageItem(item, board) {
   let acquired = null;
-  const failures = [];
-
-  for (const candidate of candidates) {
+  for (const candidate of normalizeCandidates(item.candidates)) {
     try {
       acquired = await retrieveImage(candidate.url);
       acquired.sourceUrl = candidate.url;
-      acquired.candidate = candidate;
       break;
-    } catch (error) {
-      failures.push({ url: candidate.url, error: error?.message || String(error) });
-    }
+    } catch (_) {}
   }
 
   if (!acquired) {
-    try {
-      acquired = await captureStoredRenderedImage(item);
-      acquired.sourceUrl = candidates[0]?.url || '';
-    } catch (captureError) {
-      console.warn('Poki could not resolve image', { failures, captureError });
-      throw new Error('could not recover image');
-    }
+    acquired = await captureStoredImage(item);
   }
 
-  if (!acquired.blob || acquired.blob.size === 0 || acquired.blob.size > MAX_THING_BYTES) {
-    throw new Error('image is not keepable');
+  if (!acquired?.blob || acquired.blob.size === 0 || acquired.blob.size > MAX_THING_BYTES) {
+    throw new Error('unharvestable');
   }
 
   const measured = await measureBlob(acquired.blob).catch(() => null);
@@ -220,7 +206,7 @@ async function keepImage(item, index) {
   const height = measured?.height || acquired.height || item.naturalHeight || item.rect?.height || 200;
   const filename = acquired.filename || filenameFromUrl(acquired.sourceUrl, acquired.blob.type);
 
-  return persistImage({
+  await persistImage({
     blob: acquired.blob,
     filename,
     mime: acquired.blob.type || 'image/png',
@@ -228,18 +214,39 @@ async function keepImage(item, index) {
     height,
     sourceUrl: acquired.sourceUrl || '',
     pageUrl: item.pageUrl || '',
+    board,
     acquisition: acquired.method
-  }, index);
+  });
 }
 
-function normalizeRect(rect) {
-  if (!rect) return null;
-  return {
-    left: Number(rect.left) || 0,
-    top: Number(rect.top) || 0,
-    width: Math.max(1, Number(rect.width) || 1),
-    height: Math.max(1, Number(rect.height) || 1)
-  };
+async function broadcastSeglState() {
+  const tabs = await browser.tabs.query({});
+  await Promise.all(tabs.map(tab => tab?.id ? browser.tabs.sendMessage(tab.id, { type: 'segl-set-active', active: seglActive }).catch(() => {}) : Promise.resolve()));
+}
+
+async function notifyPopup() {
+  await browser.runtime.sendMessage({ type: 'poki-changed', active: seglActive, count: poki.length }).catch(() => {});
+}
+
+async function persistState() {
+  await browser.storage.local.set({ seglActive, pokiItems: poki });
+}
+
+function publicPoki() {
+  return poki.map(item => item.type === 'text'
+    ? { id: item.id, type: 'text', text: item.text, pageUrl: item.pageUrl, pageTitle: item.pageTitle, createdAt: item.createdAt }
+    : { id: item.id, type: 'image', pageUrl: item.pageUrl, pageTitle: item.pageTitle, naturalWidth: item.naturalWidth, naturalHeight: item.naturalHeight, candidateCount: Array.isArray(item.candidates) ? item.candidates.length : 0, createdAt: item.createdAt }
+  );
+}
+
+async function syncBadge() {
+  const text = poki.length ? String(Math.min(poki.length, 99)) : '';
+  await browser.browserAction.setBadgeBackgroundColor({ color: seglActive ? '#e00000' : '#4a4a4a' }).catch(() => {});
+  await browser.browserAction.setBadgeText({ text }).catch(() => {});
+  const title = seglActive
+    ? (poki.length ? `Eskja · Segl on · Poki ${poki.length}` : 'Eskja · Segl on · Poki empty')
+    : (poki.length ? `Eskja · Segl off · Poki ${poki.length}` : 'Eskja · Segl off · Poki empty');
+  await browser.browserAction.setTitle({ title }).catch(() => {});
 }
 
 function normalizeCandidates(rawCandidates) {
@@ -263,31 +270,53 @@ function candidateScore(candidate) {
   return (candidate.priority || 0) * 1000000000 + (candidate.declaredWidth || 0) * 1000 + (candidate.density || 0);
 }
 
+function normalizeRect(rect) {
+  if (!rect || typeof rect !== 'object') return null;
+  return {
+    left: Math.max(0, Number(rect.left) || 0),
+    top: Math.max(0, Number(rect.top) || 0),
+    width: Math.max(1, Number(rect.width) || 1),
+    height: Math.max(1, Number(rect.height) || 1)
+  };
+}
+
+async function purgeDeadCaptureContexts() {
+  let changed = false;
+  for (const item of poki) {
+    if (item.type !== 'image' || !item.tabId) continue;
+    try {
+      await browser.tabs.get(item.tabId);
+    } catch (_) {
+      item.tabId = null;
+      item.windowId = null;
+      changed = true;
+    }
+  }
+  if (changed) {
+    await persistState();
+    await notifyPopup();
+  }
+}
+
 async function retrieveImage(url) {
   if (!/^https?:/i.test(url)) throw new Error('Image has no retrievable URL');
-
-  const response = await fetch(url, {
-    credentials: 'include',
-    cache: 'force-cache'
-  });
+  const response = await fetch(url, { credentials: 'include', cache: 'force-cache' });
   if (!response.ok) throw new Error(`Image request failed (${response.status})`);
   const blob = await response.blob();
   if (!blob.type.startsWith('image/')) throw new Error('Resource is not an image');
   if (blob.size > MAX_THING_BYTES) throw new Error('Image is too large');
-
-  return {
-    blob,
-    method: 'resource',
-    filename: filenameFromResponse(response, url, blob.type)
-  };
+  return { blob, method: 'resource', filename: filenameFromResponse(response, url, blob.type) };
 }
 
-async function captureStoredRenderedImage(item) {
-  if (!item.tabId || !item.windowId || !item.rect) throw new Error('no visual fallback available');
-
-  const tab = await browser.tabs.get(item.tabId);
-  if (!tab?.active || tab.windowId !== item.windowId) throw new Error('source tab is not active');
-  if (item.pageUrl && tab.url && tab.url !== item.pageUrl) throw new Error('source tab has moved');
+async function captureStoredImage(item) {
+  if (!item?.windowId || !item?.tabId || !item?.rect) throw new Error('capture fallback unavailable');
+  let tab;
+  try {
+    tab = await browser.tabs.get(item.tabId);
+  } catch (_) {
+    throw new Error('capture fallback unavailable');
+  }
+  if (!tab.active || tab.windowId !== item.windowId) throw new Error('capture fallback unavailable');
 
   const screenshot = await browser.tabs.captureVisibleTab(item.windowId, { format: 'png' });
   const image = await loadImage(screenshot);
@@ -296,12 +325,11 @@ async function captureStoredRenderedImage(item) {
   const scaleX = image.naturalWidth / viewportWidth;
   const scaleY = image.naturalHeight / viewportHeight;
   const rect = item.rect;
-
   const sx = Math.max(0, Math.round(rect.left * scaleX));
   const sy = Math.max(0, Math.round(rect.top * scaleY));
   const sw = Math.max(1, Math.min(image.naturalWidth - sx, Math.round(rect.width * scaleX)));
   const sh = Math.max(1, Math.min(image.naturalHeight - sy, Math.round(rect.height * scaleY)));
-  if (sw < 2 || sh < 2) throw new Error('image is outside the visible viewport');
+  if (sw < 2 || sh < 2) throw new Error('image is outside visible viewport');
 
   const canvas = document.createElement('canvas');
   canvas.width = sw;
@@ -309,20 +337,13 @@ async function captureStoredRenderedImage(item) {
   const ctx = canvas.getContext('2d');
   ctx.drawImage(image, sx, sy, sw, sh, 0, 0, sw, sh);
   const blob = await canvasToBlob(canvas, 'image/png');
-
-  return {
-    blob,
-    method: 'visual-capture',
-    filename: `segl-${Date.now()}.png`,
-    width: sw,
-    height: sh
-  };
+  return { blob, method: 'visual-capture', filename: `segl-${Date.now()}.png`, width: sw, height: sh, sourceUrl: item.candidates?.[0]?.url || '' };
 }
 
-async function persistImage(item, index) {
+async function persistImage(item) {
   const id = crypto.randomUUID();
   const ext = extensionFor(item.filename, item.mime);
-  const storagePath = `${TEST_BOARD}/${id}.${ext}`;
+  const storagePath = `${item.board}/${id}.${ext}`;
   const objectUrl = `${SUPABASE_URL}/storage/v1/object/${encodePath(STORAGE_BUCKET)}/${encodePath(storagePath)}`;
 
   const upload = await fetch(objectUrl, {
@@ -337,7 +358,7 @@ async function persistImage(item, index) {
   });
   if (!upload.ok) throw new Error(`Storage upload failed (${upload.status})`);
 
-  const slot = placementSlot(index);
+  const slot = placementSlot();
   const maxWidth = 500;
   const sourceWidth = Math.max(1, Number(item.width) || 300);
   const sourceHeight = Math.max(1, Number(item.height) || 200);
@@ -346,7 +367,7 @@ async function persistImage(item, index) {
 
   const row = {
     id,
-    board: TEST_BOARD,
+    board: item.board,
     type: 'image',
     src: /^https?:/i.test(item.sourceUrl || '') ? item.sourceUrl : null,
     storage_path: storagePath,
@@ -356,7 +377,7 @@ async function persistImage(item, index) {
     width,
     height,
     grayscale: 0,
-    z: zNow(index)
+    z: zNow()
   };
 
   try {
@@ -365,8 +386,6 @@ async function persistImage(item, index) {
     await deleteStorageObject(storagePath).catch(() => {});
     throw error;
   }
-
-  return { id, kind: 'image', storagePath };
 }
 
 async function insertBoardRow(row) {
@@ -390,23 +409,17 @@ async function deleteStorageObject(storagePath) {
   const objectUrl = `${SUPABASE_URL}/storage/v1/object/${encodePath(STORAGE_BUCKET)}/${encodePath(storagePath)}`;
   await fetch(objectUrl, {
     method: 'DELETE',
-    headers: {
-      apikey: SUPABASE_ANON_KEY,
-      Authorization: `Bearer ${SUPABASE_ANON_KEY}`
-    }
+    headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${SUPABASE_ANON_KEY}` }
   });
 }
 
-function placementSlot(index = 0) {
-  const slot = index % 12;
-  return {
-    x: 30 + (slot % 4) * 42,
-    y: 30 + Math.floor(slot / 4) * 42
-  };
+function placementSlot() {
+  const slot = Math.floor(Date.now() / 700) % 12;
+  return { x: 30 + (slot % 4) * 42, y: 30 + Math.floor(slot / 4) * 42 };
 }
 
-function zNow(index = 0) {
-  return (Date.now() + index) % 2147483647;
+function zNow() {
+  return Date.now() % 2147483647;
 }
 
 function filenameFromResponse(response, url, mime) {
@@ -431,10 +444,7 @@ function filenameFromUrl(url, mime) {
 function extensionFor(filename, mime) {
   const match = String(filename || '').match(/\.([a-z0-9]{2,5})$/i);
   if (match) return match[1].toLowerCase().replace('jpeg', 'jpg');
-  const map = {
-    'image/jpeg': 'jpg', 'image/png': 'png', 'image/gif': 'gif',
-    'image/webp': 'webp', 'image/avif': 'avif', 'image/svg+xml': 'svg'
-  };
+  const map = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/gif': 'gif', 'image/webp': 'webp', 'image/avif': 'avif', 'image/svg+xml': 'svg' };
   return map[mime] || 'png';
 }
 
@@ -470,6 +480,6 @@ function loadImage(src) {
 
 function canvasToBlob(canvas, type) {
   return new Promise((resolve, reject) => {
-    canvas.toBlob(blob => blob ? resolve(blob) : reject(new Error('Could not capture image')), type);
+    canvas.toBlob(blob => blob ? resolve(blob) : reject(new Error('could not capture image')), type);
   });
 }
