@@ -1,71 +1,103 @@
 const bagEl = document.getElementById('bag');
 const countEl = document.getElementById('count');
-const statusEl = document.getElementById('status');
-const keepButton = document.getElementById('keep');
+const toggleButton = document.getElementById('toggleSegl');
 const clearButton = document.getElementById('clear');
+const keepButton = document.getElementById('keep');
 
+let active = false;
 let items = [];
 let keeping = false;
 
-keepButton.addEventListener('click', async () => {
-  if (!items.length || keeping) return;
-  keeping = true;
-  syncControls();
-  statusEl.textContent = 'keeping…';
+browser.runtime.onMessage.addListener(message => {
+  if (message?.type === 'poki-changed') refresh();
+});
 
+toggleButton.addEventListener('click', async () => {
   try {
-    const result = await browser.runtime.sendMessage({ type: 'poki-keep' });
-    items = await browser.runtime.sendMessage({ type: 'poki-list' }) || [];
-    if (result?.ok) statusEl.textContent = result.kept ? `kept ${result.kept}` : '';
-    else statusEl.textContent = `${result?.kept || 0} kept · ${result?.remaining || items.length} left`;
-    render();
+    const result = await browser.runtime.sendMessage({ type: 'segl-set-global-active', active: !active });
+    active = !!result?.active;
+    await refresh();
   } catch (error) {
     console.error(error);
-    statusEl.textContent = 'could not keep';
-  } finally {
-    keeping = false;
-    syncControls();
   }
 });
 
 clearButton.addEventListener('click', async () => {
   if (!items.length || keeping) return;
-  items = await browser.runtime.sendMessage({ type: 'poki-clear' }) || [];
-  statusEl.textContent = '';
-  render();
+  try {
+    const result = await browser.runtime.sendMessage({ type: 'poki-clear' });
+    active = !!result?.active;
+    items = result?.items || [];
+    render();
+  } catch (error) {
+    console.error(error);
+  }
 });
 
-browser.storage.onChanged.addListener((changes, area) => {
-  if (area === 'local' && changes.eskjaPokiV0) refresh();
+keepButton.addEventListener('click', async () => {
+  if (!items.length || keeping) return;
+  keeping = true;
+  render('keeping…');
+  try {
+    const result = await browser.runtime.sendMessage({ type: 'poki-keep' });
+    active = !!result?.active;
+    items = result?.items || [];
+    if (result?.ok) render(result.kept ? `kept ${result.kept}` : 'nothing kept');
+    else render(result?.failures?.length ? `kept ${result.kept || 0} · ${result.failures.length} failed` : 'could not keep');
+  } catch (error) {
+    console.error(error);
+    render('could not keep');
+  } finally {
+    keeping = false;
+    keepButton.disabled = !items.length;
+  }
 });
 
 refresh();
 
 async function refresh() {
   try {
-    items = await browser.runtime.sendMessage({ type: 'poki-list' }) || [];
+    const result = await browser.runtime.sendMessage({ type: 'poki-list' });
+    active = !!result?.active;
+    items = result?.items || [];
     render();
   } catch (error) {
     console.error(error);
   }
 }
 
-function render() {
+function render(status = '') {
   bagEl.innerHTML = '';
-  countEl.textContent = String(items.length);
+  countEl.textContent = `${items.length} in poki`;
+  toggleButton.textContent = active ? 'segl on' : 'segl off';
+  toggleButton.classList.toggle('active', active);
 
   if (!items.length) {
     const empty = document.createElement('div');
     empty.className = 'empty';
-    empty.textContent = 'empty';
+    empty.textContent = 'poki empty';
     bagEl.appendChild(empty);
-    syncControls();
-    return;
   }
 
   for (const item of items) {
     const thing = document.createElement('article');
-    thing.className = `thing ${item.type || 'unknown'}`;
+    thing.className = `thing ${item.type}`;
+
+    const remove = document.createElement('button');
+    remove.type = 'button';
+    remove.className = 'remove';
+    remove.textContent = '×';
+    remove.title = 'remove';
+    remove.addEventListener('click', async () => {
+      try {
+        const result = await browser.runtime.sendMessage({ type: 'poki-remove', id: item.id });
+        active = !!result?.active;
+        items = result?.items || [];
+        render();
+      } catch (error) {
+        console.error(error);
+      }
+    });
 
     const kind = document.createElement('div');
     kind.className = 'kind';
@@ -73,62 +105,35 @@ function render() {
 
     const body = document.createElement('div');
     body.className = 'body';
+    body.textContent = item.type === 'text'
+      ? truncate(item.text || '', 150)
+      : `from ${hostish(item.pageUrl)}${item.naturalWidth && item.naturalHeight ? ` · ${item.naturalWidth}×${item.naturalHeight}` : ''}${item.candidateCount ? ` · ${item.candidateCount} paths` : ''}`;
 
-    if (item.type === 'text') {
-      body.textContent = compactText(item.text, 180);
-    } else {
-      body.textContent = describeImage(item);
-    }
+    const meta = document.createElement('div');
+    meta.className = 'meta';
+    meta.textContent = item.pageTitle ? truncate(item.pageTitle, 70) : (item.pageUrl ? hostish(item.pageUrl) : '');
 
-    const source = document.createElement('div');
-    source.className = 'source';
-    source.textContent = describeSource(item.pageUrl);
-
-    const remove = document.createElement('button');
-    remove.type = 'button';
-    remove.className = 'remove';
-    remove.textContent = '×';
-    remove.title = 'remove from poki';
-    remove.addEventListener('click', async () => {
-      items = await browser.runtime.sendMessage({ type: 'poki-remove', id: item.id }) || [];
-      statusEl.textContent = '';
-      render();
-    });
-
-    thing.append(kind, body, source, remove);
+    thing.append(remove, kind, body, meta);
     bagEl.appendChild(thing);
   }
 
-  syncControls();
-}
-
-function syncControls() {
-  countEl.textContent = String(items.length);
-  keepButton.disabled = keeping || !items.length;
-  clearButton.disabled = keeping || !items.length;
-}
-
-function compactText(value, limit) {
-  const text = String(value || '').replace(/\s+/g, ' ').trim();
-  return text.length > limit ? `${text.slice(0, limit - 1)}…` : text;
-}
-
-function describeImage(item) {
-  const candidate = Array.isArray(item.candidates) ? item.candidates[0] : null;
-  let name = 'image';
-  if (candidate?.url) {
-    try {
-      const url = new URL(candidate.url);
-      name = decodeURIComponent(url.pathname.split('/').filter(Boolean).pop() || url.hostname);
-    } catch (_) {}
+  if (status) {
+    const line = document.createElement('div');
+    line.className = 'status';
+    line.textContent = status;
+    bagEl.appendChild(line);
   }
 
-  const width = Number(item.naturalWidth) || 0;
-  const height = Number(item.naturalHeight) || 0;
-  return width && height ? `${name} · ${Math.round(width)}×${Math.round(height)}` : name;
+  clearButton.disabled = keeping || !items.length;
+  keepButton.disabled = keeping || !items.length;
 }
 
-function describeSource(value) {
-  try { return new URL(value).hostname.replace(/^www\./, ''); }
-  catch (_) { return ''; }
+function hostish(url) {
+  try { return new URL(url).host.replace(/^www\./, ''); }
+  catch (_) { return 'page'; }
+}
+
+function truncate(text, max) {
+  const value = String(text || '').replace(/\s+/g, ' ').trim();
+  return value.length > max ? `${value.slice(0, Math.max(0, max - 1))}…` : value;
 }
