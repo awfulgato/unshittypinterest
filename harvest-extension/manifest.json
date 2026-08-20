@@ -1,8 +1,8 @@
 {
   "manifest_version": 2,
   "name": "Eskja Segl + Poki v0",
-  "version": "0.3.0",
-  "description": "Pilot Segl gathers selected text and hovered images into Poki, then keeps them in a test Eskja.",
+  "version": "0.4.0",
+  "description": "Segl gathers chosen things into Poki; keep sends them into Eskja.",
   "permissions": [
     "<all_urls>",
     "activeTab",
@@ -13,11 +13,8 @@
     "scripts": ["background.js"]
   },
   "browser_action": {
-    "default_title": "Turn Segl on"
-  },
-  "sidebar_action": {
-    "default_title": "poki",
-    "default_panel": "sidebar.html"
+    "default_title": "Eskja",
+    "default_popup": "sidebar.html"
   },
   "content_scripts": [
     {
