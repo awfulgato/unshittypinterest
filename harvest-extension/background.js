@@ -53,7 +53,7 @@ async function gatherAndKeepImage(message, sender) {
 
   for (const candidate of candidates) {
     try {
-      acquired = await retrieveImage(candidate.url, message.pageUrl);
+      acquired = await retrieveImage(candidate.url);
       acquired.sourceUrl = candidate.url;
       acquired.candidate = candidate;
       break;
@@ -145,19 +145,16 @@ function normalizeCandidates(rawCandidates) {
 }
 
 function candidateScore(candidate) {
-  return (candidate.declaredWidth || 0) * 100000 + (candidate.density || 0) * 1000 + (candidate.priority || 0);
+  return (candidate.priority || 0) * 1000000000 + (candidate.declaredWidth || 0) * 1000 + (candidate.density || 0);
 }
 
-async function retrieveImage(url, pageUrl) {
+async function retrieveImage(url) {
   if (!/^https?:/i.test(url)) throw new Error('Image has no retrievable URL');
 
-  const options = {
+  const response = await fetch(url, {
     credentials: 'include',
     cache: 'force-cache'
-  };
-  if (/^https?:/i.test(pageUrl || '')) options.referrer = pageUrl;
-
-  const response = await fetch(url, options);
+  });
   if (!response.ok) throw new Error(`Image request failed (${response.status})`);
   const blob = await response.blob();
   if (!blob.type.startsWith('image/')) throw new Error('Resource is not an image');
