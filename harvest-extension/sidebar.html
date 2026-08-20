@@ -3,23 +3,19 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>poki</title>
+  <title>Eskja</title>
   <link rel="stylesheet" href="sidebar.css">
 </head>
 <body>
-  <header>
-    <strong>poki</strong>
-    <span id="count">0</span>
-    <button id="clear" type="button">clear</button>
+  <header class="topbar">
+    <button id="toggleSegl" type="button">segl off</button>
+    <div id="count" class="count">0 in poki</div>
   </header>
-
   <main id="bag" aria-live="polite"></main>
-
   <footer>
-    <div id="status" aria-live="polite"></div>
+    <button id="clear" type="button">clear</button>
     <button id="keep" type="button">keep</button>
   </footer>
-
   <script src="sidebar.js"></script>
 </body>
 </html>
