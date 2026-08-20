@@ -1,31 +1,46 @@
-#eskja-harvest-sickle {
+#eskja-segl {
   all: initial;
   position: fixed;
   inset: 0 auto auto 0;
-  width: 28px;
-  height: 28px;
+  width: 32px;
+  height: 32px;
   box-sizing: border-box;
-  padding: 3px;
-  border: 0;
+  border: 2px solid #fff;
   border-radius: 50%;
-  background: rgba(250, 249, 245, 0.92);
-  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.22);
+  background: #e00000;
+  color: #fff;
+  box-shadow: 0 1px 7px rgba(0, 0, 0, 0.38);
+  font: 700 16px/28px Arial, sans-serif;
+  text-align: center;
   opacity: 0;
   pointer-events: none;
   z-index: 2147483647;
-  transition: opacity 90ms ease, transform 90ms ease;
+  transition: opacity 70ms ease, transform 70ms ease, background 70ms ease;
 }
 
-#eskja-harvest-sickle.visible {
+#eskja-segl.visible {
   opacity: 1;
   pointer-events: auto;
   cursor: pointer;
 }
 
-#eskja-harvest-sickle svg { width: 100%; height: 100%; overflow: visible; }
-#eskja-harvest-sickle .blade { fill: #1f1f1d; stroke: none; }
-#eskja-harvest-sickle .handle,
-#eskja-harvest-sickle .break { fill: none; stroke: #1f1f1d; stroke-width: 2.2; stroke-linecap: round; }
-#eskja-harvest-sickle.working { opacity: 0.55; }
-#eskja-harvest-sickle.gathered { transform: scale(0.82); opacity: 0.35; }
-#eskja-harvest-sickle.broken { background: rgba(245, 241, 236, 0.96); }
+#eskja-segl.working { opacity: 0.55; }
+#eskja-segl.kept { background: #16833d; }
+#eskja-segl.failed { background: #e00000; border-style: dashed; }
+
+#eskja-segl-active {
+  all: initial;
+  position: fixed;
+  top: 7px;
+  right: 7px;
+  padding: 3px 5px 2px;
+  background: #e00000;
+  color: white;
+  font: 700 9px/1 Arial, sans-serif;
+  letter-spacing: .08em;
+  opacity: 0;
+  pointer-events: none;
+  z-index: 2147483646;
+}
+
+#eskja-segl-active.visible { opacity: .92; }
