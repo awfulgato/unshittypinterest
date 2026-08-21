@@ -10,6 +10,16 @@
 
 body[data-nav="wyf"] .storeskja-actions { display: none; }
 
+body[data-nav="husbond"],
+body[data-nav="husbond"] .nav-canvas {
+  cursor: grab;
+}
+
+body[data-nav="husbond"].placing-lid,
+body[data-nav="husbond"].placing-lid .nav-canvas {
+  cursor: grabbing;
+}
+
 .storeskja-add {
   width: 18px;
   height: 18px;
@@ -34,8 +44,28 @@ body[data-nav="wyf"] .storeskja-actions { display: none; }
   color: #ddd;
   user-select: none;
   touch-action: none;
-  cursor: default;
+  cursor: pointer;
   z-index: 10;
+  transition: filter .08s ease, opacity .08s ease, transform .08s ease;
+}
+
+.storeskja-lid:hover:not(.moving):not(.placing):not(.editing) {
+  filter: brightness(1.22);
+}
+
+.storeskja-lid.moving {
+  cursor: grabbing;
+  opacity: .82;
+  transform: scale(1.012);
+  filter: brightness(1.12);
+}
+
+.storeskja-lid.placing {
+  pointer-events: none;
+  cursor: grabbing;
+  opacity: .72;
+  transform: scale(1.018);
+  filter: brightness(1.18);
 }
 
 .storeskja-lid img,
@@ -64,7 +94,7 @@ body[data-nav="wyf"] .storeskja-actions { display: none; }
   text-align: center;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
-  cursor: default;
+  cursor: pointer;
   user-select: none;
 }
 
@@ -83,6 +113,7 @@ body[data-nav="wyf"] .storeskja-actions { display: none; }
   color: #aaa;
   border-bottom: 1px solid #555;
   font: 13px/1.2 Arial, Helvetica, sans-serif;
+  pointer-events: none;
 }
 
 .storeskja-lid-audio .mark {
@@ -100,7 +131,6 @@ body[data-nav="wyf"] .storeskja-actions { display: none; }
   height: 17px;
 }
 
-.storeskja-lid:hover .lid-controls,
 .storeskja-lid.selected .lid-controls,
 .storeskja-lid.editing .lid-controls {
   display: flex;
@@ -134,7 +164,6 @@ body[data-nav="wyf"] .storeskja-actions { display: none; }
   cursor: nwse-resize;
 }
 
-.storeskja-lid:hover .lid-resize,
 .storeskja-lid.selected .lid-resize,
 .storeskja-lid.editing .lid-resize {
   display: block;
@@ -157,6 +186,7 @@ body[data-nav="wyf"] .storeskja-actions { display: none; }
   display: grid;
   place-items: center;
   background: rgba(0,0,0,.72);
+  cursor: default;
 }
 
 .eskja-confirm-panel {
