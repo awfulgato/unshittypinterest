@@ -13,7 +13,12 @@ function upgradeNotes(root) {
     if (!textarea || !controls) return;
 
     el.dataset.eskjaTextUpgraded = '1';
-    textarea.readOnly = true;
+    const alreadyFocused = document.activeElement === textarea;
+    textarea.readOnly = !alreadyFocused;
+    if (alreadyFocused) {
+      el.classList.add('selected', 'editing');
+      textarea.classList.add('editing');
+    }
 
     const edit = document.createElement('button');
     edit.type = 'button';
