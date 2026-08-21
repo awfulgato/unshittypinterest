@@ -1,0 +1,59 @@
+name: patch cutout model
+
+on:
+  push:
+    branches:
+      - media-update
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: media-update
+
+      - name: Patch background removal pipeline
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('app.js')
+          text = path.read_text()
+          old = """  async function getBackgroundSegmenter() {
+            if (!backgroundSegmenterPromise) {
+              backgroundSegmenterPromise = import('https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.8.1/+esm')
+                .then(({ pipeline }) => pipeline('background-removal', 'Ko033/isnet-general-use-onnx', { dtype: 'q8' }));
+            }
+            return backgroundSegmenterPromise;
+          }
+          """
+          new = """  async function getBackgroundSegmenter() {
+            if (!backgroundSegmenterPromise) {
+              backgroundSegmenterPromise = import('https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.8.1/+esm')
+                .then(({ pipeline }) => pipeline('background-removal', 'Xenova/modnet', { dtype: 'fp32' }))
+                .catch(error => {
+                  backgroundSegmenterPromise = null;
+                  throw error;
+                });
+            }
+            return backgroundSegmenterPromise;
+          }
+          """
+          if old not in text:
+              raise SystemExit('expected background segmenter block not found')
+          path.write_text(text.replace(old, new, 1))
+          PY
+
+      - name: Remove one-shot workflow
+        run: rm .github/workflows/patch-cutout.yml
+
+      - name: Commit patch
+        run: |
+          git config user.name "awfulgato"
+          git config user.email "zacharyawarner@gmail.com"
+          git add app.js .github/workflows/patch-cutout.yml
+          git commit -m "Fix background removal model compatibility"
+          git push origin HEAD:media-update
