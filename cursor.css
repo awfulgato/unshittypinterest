@@ -1,0 +1,37 @@
+:root {
+  --eskja-open-hand: url('cursor-open.svg') 12 10, grab;
+  --eskja-point-hand: url('cursor-point.svg') 4 16, pointer;
+  --eskja-closed-hand: url('cursor-closed.svg') 12 12, grabbing;
+}
+
+/* Main physical grammar. Direct text editing and resize handles may override. */
+body[data-nav="husbond"],
+body[data-nav="husbond"] .nav-canvas,
+.board-page,
+#board {
+  cursor: var(--eskja-open-hand);
+}
+
+body[data-nav="husbond"] .storeskja-lid {
+  cursor: var(--eskja-point-hand);
+}
+
+body[data-nav="husbond"] .storeskja-lid.moving,
+body[data-nav="husbond"] .storeskja-lid.placing,
+.board-page .image-item.dragging,
+.board-page .note-item.dragging,
+.board-page .media-item.dragging {
+  cursor: var(--eskja-closed-hand) !important;
+}
+
+body[data-nav="husbond"].placing-lid,
+body[data-nav="husbond"].placing-lid .nav-canvas {
+  cursor: var(--eskja-closed-hand);
+}
+
+.board-page .image-item,
+.board-page .note-item,
+.board-page .media-item,
+.board-page .note-text:not(.editing) {
+  cursor: var(--eskja-open-hand);
+}
