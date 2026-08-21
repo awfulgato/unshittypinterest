@@ -2,6 +2,37 @@
    Keep this intentionally plain; the audio/video skin gets its own pass after
    upload, persistence, playback, resize, delete, and reload are proven. */
 
+/* Inside an eskja, things are handled rather than entered. */
+.image-item,
+.note-item,
+.media-item {
+  cursor: grab;
+}
+
+.image-item:active,
+.note-item:active,
+.media-item:active,
+.image-item.dragging,
+.note-item.dragging,
+.media-item.dragging {
+  cursor: grabbing;
+}
+
+.note-text,
+.note-item .note-text {
+  cursor: text;
+}
+
+.control,
+.media-play {
+  cursor: pointer;
+}
+
+.resize-handle,
+.lid-resize {
+  cursor: nwse-resize;
+}
+
 .media-item {
   transition: opacity .11s ease;
 }
