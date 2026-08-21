@@ -1,0 +1,39 @@
+.note-item .note-text {
+  pointer-events: none;
+  cursor: var(--eskja-open-hand, grab);
+  user-select: none;
+}
+
+.note-item.editing .note-text {
+  pointer-events: auto;
+  cursor: text;
+  user-select: text;
+}
+
+.note-item:hover .image-controls,
+.note-item.selected .image-controls,
+.note-item.editing .image-controls {
+  display: block;
+}
+
+.note-item:hover > .resize-handle,
+.note-item.selected > .resize-handle,
+.note-item.editing > .resize-handle {
+  display: block;
+}
+
+.note-edit-control {
+  position: absolute;
+  left: -1px;
+  top: -18px;
+  width: 16px;
+  height: 16px;
+  font-size: 14px;
+  line-height: 16px;
+  pointer-events: auto;
+  cursor: var(--eskja-open-hand, pointer);
+}
+
+.note-item.dragging {
+  opacity: .84;
+}
