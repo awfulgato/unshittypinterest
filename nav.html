@@ -6,6 +6,7 @@
   <title>eskja</title>
   <link rel="icon" type="image/png" href="favicon.png">
   <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="storeskja.css">
 </head>
 <body class="nav-page">
   <a class="home-icon" href="index.html" aria-label="home" title="home">
@@ -13,6 +14,15 @@
   </a>
 
   <main class="nav-canvas" data-nav=""></main>
+
+  <div class="storeskja-actions" aria-label="add entrance">
+    <label class="storeskja-add" title="add lid" aria-label="add lid">
+      <span>+</span>
+      <input id="lidFileInput" type="file" accept="image/*,audio/*,video/*" multiple>
+    </label>
+    <button id="lidTextButton" class="storeskja-add" type="button" title="write lid" aria-label="write lid">&amp;</button>
+  </div>
+
   <script>
     const params = new URLSearchParams(location.search);
     const nav = params.get('nav') === 'wyf' ? 'wyf' : 'husbond';
@@ -20,8 +30,9 @@
       window.location.replace('wyf.html');
     } else {
       document.querySelector('.nav-canvas').dataset.nav = nav;
+      document.body.dataset.nav = nav;
     }
   </script>
-  <script src="nav.js"></script>
+  <script type="module" src="nav.js"></script>
 </body>
 </html>
