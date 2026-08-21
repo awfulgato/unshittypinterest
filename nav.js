@@ -2,25 +2,14 @@ import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js
 import { SUPABASE_URL, SUPABASE_ANON_KEY, STORAGE_BUCKET } from './supabase-config.js';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-
 const home = document.querySelector('.nav-canvas');
 if (!home) throw new Error('storeskja canvas missing');
 
 const type = home.dataset.nav;
 const HUSBOND_STORE = 'storeskja-husbond';
-let dynamicLids = [];
+let lids = [];
 let zCounter = 100;
-
-const husbondLatin = 'abcdefghijklmnopqrstuvwxyz'.split('');
-const husbondGreek = ['α','Β','γ','Δ','ε','ζ','η','Θ','κ','Λ','μ','ν','Π','σ','φ','χ','ψ','Ω'];
-const husbondCyrillic = ['а','б','д','ж','к','м','р','у','ф','Я'];
-const husbondHebrew = [
-  { label: 'ש', board: 'husbond-hebrew-shema' },
-  { label: 'ז', board: 'husbond-hebrew-zechariah' },
-  { label: 'אדם', board: 'husbond-hebrew-adam' },
-  { label: 'ר', board: 'husbond-hebrew-ruach' },
-  { label: 'א', board: 'husbond-hebrew-ahava' }
-];
+let activeLid = null;
 
 const rune = {
   'whaleroad':'ᚹᚺᚨᛚᛖᚱᚨᛟᛞ',
@@ -30,73 +19,20 @@ const rune = {
   'rafn':'ᚱᚨᚠᚾ'
 };
 
-function boardLink(label, board, cls = 'husbond-static') {
-  const a = document.createElement('a');
-  a.className = cls;
-  a.textContent = label;
-  a.href = `board.html?board=${encodeURIComponent(board)}`;
-  a.dataset.board = board;
-  return a;
-}
-
 if (type === 'husbond') {
-  renderLegacyHusbond();
   wireHusbondActions();
-  await loadDynamicLids();
+  wireCanvasSelection();
+  await loadLids();
 } else {
   renderWyf();
 }
 
-function renderLegacyHusbond() {
-  const families = [
-    husbondLatin.map(ch => boardLink(ch, `husbond-${ch}`)),
-    Array.from({ length: 12 }, (_, i) => boardLink(String(i + 1), `husbond-${i + 1}`)),
-    husbondGreek.map((ch, i) => boardLink(ch, `husbond-greek-${legacyGreekIndex(ch)}`)),
-    husbondCyrillic.map((ch, i) => boardLink(ch, `husbond-cyrillic-${legacyCyrillicIndex(ch)}`)),
-    husbondHebrew.map(({ label, board }) => boardLink(label, board))
-  ];
-
-  const lefts = [7, 21, 35, 49, 63];
-  families.forEach((family, familyIndex) => {
-    const top = 7;
-    const bottom = 8;
-    const usable = 100 - top - bottom;
-    const step = family.length > 1 ? usable / (family.length - 1) : 0;
-    family.forEach((link, i) => {
-      link.style.left = `${lefts[familyIndex]}%`;
-      link.style.top = `${top + step * i}%`;
-      link.style.transform = 'translate(-50%, -50%)';
-      home.appendChild(link);
-    });
+function wireCanvasSelection() {
+  document.addEventListener('pointerdown', event => {
+    if (!event.target.closest('.storeskja-lid') && !event.target.closest('.eskja-confirm')) {
+      setActiveLid(null);
+    }
   });
-
-  const chinese = [
-    boardLink('道德经', 'husbond-taodejing'),
-    boardLink('无为', 'husbond-wuwei')
-  ];
-  chinese.forEach((link, i) => {
-    link.style.left = `${77 + i * 6}%`;
-    link.style.top = '9%';
-    link.style.writingMode = 'vertical-rl';
-    link.style.textOrientation = 'upright';
-    link.style.letterSpacing = '.08em';
-    home.appendChild(link);
-  });
-
-  const cross = boardLink('†', 'husbond-cross');
-  cross.style.left = '93%';
-  cross.style.top = '12%';
-  home.appendChild(cross);
-}
-
-function legacyGreekIndex(ch) {
-  const original = ['α','Β','γ','Δ','ζ','Θ','κ','Λ','μ','Π','σ','Ω','ε','η','ν','φ','χ','ψ'];
-  return original.indexOf(ch);
-}
-
-function legacyCyrillicIndex(ch) {
-  const original = ['ж','Я','ф','а','б','д','к','м','р','у'];
-  return original.indexOf(ch);
 }
 
 function wireHusbondActions() {
@@ -114,7 +50,7 @@ function wireHusbondActions() {
         showMessage('could not add lid');
       }
     }
-    await loadDynamicLids();
+    await loadLids();
   });
 
   textButton?.addEventListener('click', async () => {
@@ -122,7 +58,7 @@ function wireHusbondActions() {
     if (!String(text || '').trim()) return;
     try {
       await createTextLid(String(text).trim());
-      await loadDynamicLids();
+      await loadLids();
     } catch (error) {
       console.error(error);
       showMessage('could not add lid');
@@ -130,7 +66,7 @@ function wireHusbondActions() {
   });
 }
 
-async function loadDynamicLids() {
+async function loadLids() {
   home.querySelectorAll('.storeskja-lid').forEach(node => node.remove());
 
   const { data, error } = await supabase
@@ -146,22 +82,22 @@ async function loadDynamicLids() {
     return;
   }
 
-  dynamicLids = data || [];
-  zCounter = Math.max(100, ...dynamicLids.map(item => Number(item.z) || 0));
+  lids = data || [];
+  zCounter = Math.max(100, ...lids.map(item => Number(item.z) || 0));
 
-  for (const item of dynamicLids) {
+  for (const item of lids) {
     item.storagePath = item.storage_path;
     if (item.storage_path) {
       const { data: publicUrl } = supabase.storage.from(STORAGE_BUCKET).getPublicUrl(item.storage_path);
       item.src = publicUrl.publicUrl;
     }
-    renderDynamicLid(item);
+    renderLid(item);
   }
 }
 
-function renderDynamicLid(item) {
+function renderLid(item) {
   const el = document.createElement('div');
-  el.className = 'storeskja-lid';
+  el.className = `storeskja-lid lid-${item.type}`;
   el.dataset.id = item.id;
   el.style.left = `${Number(item.x) || 80}px`;
   el.style.top = `${Number(item.y) || 80}px`;
@@ -169,11 +105,16 @@ function renderDynamicLid(item) {
   el.style.height = `${Math.max(28, Number(item.height) || 60)}px`;
   el.style.zIndex = String(item.z || 10);
 
+  let textEditor = null;
+
   if (item.type === 'note') {
-    const text = document.createElement('div');
-    text.className = 'storeskja-lid-text';
-    text.textContent = item.text || '';
-    el.appendChild(text);
+    textEditor = document.createElement('textarea');
+    textEditor.className = 'storeskja-lid-text';
+    textEditor.value = item.text || '';
+    textEditor.readOnly = true;
+    textEditor.spellcheck = false;
+    textEditor.setAttribute('aria-label', 'lid text');
+    el.appendChild(textEditor);
   } else if (item.type === 'audio') {
     const audio = document.createElement('div');
     audio.className = 'storeskja-lid-audio';
@@ -201,92 +142,289 @@ function renderDynamicLid(item) {
     el.appendChild(img);
   }
 
+  const controls = document.createElement('div');
+  controls.className = 'lid-controls';
+
+  if (item.type === 'note') {
+    const edit = document.createElement('button');
+    edit.className = 'lid-control lid-edit';
+    edit.type = 'button';
+    edit.textContent = '&';
+    edit.title = 'edit text';
+    edit.addEventListener('pointerdown', stop);
+    edit.addEventListener('click', event => {
+      stop(event);
+      beginTextEdit(item, el, textEditor);
+    });
+    controls.appendChild(edit);
+  }
+
   const remove = document.createElement('button');
-  remove.className = 'lid-remove';
+  remove.className = 'lid-control lid-remove';
   remove.type = 'button';
   remove.textContent = '×';
-  remove.title = 'remove lid';
-  remove.addEventListener('pointerdown', event => event.stopPropagation());
+  remove.title = 'let this eskja go';
+  remove.addEventListener('pointerdown', stop);
   remove.addEventListener('click', async event => {
-    event.preventDefault();
-    event.stopPropagation();
-    await removeLid(item, el);
+    stop(event);
+    const shouldRemove = await confirmLetGo();
+    if (shouldRemove) await removeLid(item, el);
   });
-  el.appendChild(remove);
+  controls.appendChild(remove);
+  el.appendChild(controls);
 
-  let moved = false;
+  const resize = document.createElement('div');
+  resize.className = 'lid-resize';
+  resize.title = 'resize lid';
+  resize.addEventListener('pointerdown', event => beginResize(event, item, el));
+  el.appendChild(resize);
+
   el.addEventListener('pointerdown', event => {
-    if (event.button !== 0 || event.target === remove) return;
-    event.preventDefault();
-
-    const startX = event.clientX;
-    const startY = event.clientY;
-    const originX = Number(item.x) || 80;
-    const originY = Number(item.y) || 80;
-    moved = false;
-
-    item.z = ++zCounter;
-    el.style.zIndex = String(item.z);
-    el.setPointerCapture(event.pointerId);
-
-    const onMove = moveEvent => {
-      const dx = moveEvent.clientX - startX;
-      const dy = moveEvent.clientY - startY;
-      if (Math.hypot(dx, dy) > 4) moved = true;
-      if (!moved) return;
-      item.x = Math.max(0, originX + dx);
-      item.y = Math.max(0, originY + dy);
-      el.style.left = `${item.x}px`;
-      el.style.top = `${item.y}px`;
-    };
-
-    const onUp = async upEvent => {
-      el.removeEventListener('pointermove', onMove);
-      el.removeEventListener('pointerup', onUp);
-      el.removeEventListener('pointercancel', onUp);
-
-      if (moved) {
-        await saveLidPosition(item);
-      } else if (item.target_board) {
-        window.location.href = `board.html?board=${encodeURIComponent(item.target_board)}`;
-      }
-    };
-
-    el.addEventListener('pointermove', onMove);
-    el.addEventListener('pointerup', onUp);
-    el.addEventListener('pointercancel', onUp);
+    if (event.button !== 0) return;
+    if (event.target.closest('.lid-control') || event.target.closest('.lid-resize')) return;
+    if (textEditor && !textEditor.readOnly) return;
+    beginMoveOrEnter(event, item, el);
   });
+
+  if (textEditor) {
+    textEditor.addEventListener('pointerdown', event => {
+      if (!textEditor.readOnly) event.stopPropagation();
+    });
+    textEditor.addEventListener('keydown', async event => {
+      if (event.key === 'Escape') {
+        textEditor.value = item.text || '';
+        finishTextEdit(item, el, textEditor, false);
+      } else if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') {
+        event.preventDefault();
+        await finishTextEdit(item, el, textEditor, true);
+      }
+    });
+    textEditor.addEventListener('blur', async () => {
+      if (!textEditor.readOnly) await finishTextEdit(item, el, textEditor, true);
+    });
+  }
 
   home.appendChild(el);
 }
 
-async function saveLidPosition(item) {
+function beginMoveOrEnter(event, item, el) {
+  event.preventDefault();
+  setActiveLid(el);
+
+  const startX = event.clientX;
+  const startY = event.clientY;
+  const originX = Number(item.x) || 80;
+  const originY = Number(item.y) || 80;
+  let moved = false;
+
+  item.z = ++zCounter;
+  el.style.zIndex = String(item.z);
+  el.setPointerCapture(event.pointerId);
+
+  const onMove = moveEvent => {
+    const dx = moveEvent.clientX - startX;
+    const dy = moveEvent.clientY - startY;
+    if (Math.hypot(dx, dy) > 4) moved = true;
+    if (!moved) return;
+    item.x = Math.max(0, originX + dx);
+    item.y = Math.max(0, originY + dy);
+    el.style.left = `${item.x}px`;
+    el.style.top = `${item.y}px`;
+  };
+
+  const onUp = async () => {
+    el.removeEventListener('pointermove', onMove);
+    el.removeEventListener('pointerup', onUp);
+    el.removeEventListener('pointercancel', onUp);
+
+    if (moved) {
+      await saveLidGeometry(item);
+    } else if (item.target_board) {
+      window.location.href = `board.html?board=${encodeURIComponent(item.target_board)}`;
+    }
+  };
+
+  el.addEventListener('pointermove', onMove);
+  el.addEventListener('pointerup', onUp);
+  el.addEventListener('pointercancel', onUp);
+}
+
+function beginResize(event, item, el) {
+  event.preventDefault();
+  event.stopPropagation();
+  setActiveLid(el);
+
+  const startX = event.clientX;
+  const startY = event.clientY;
+  const startWidth = Math.max(36, Number(item.width) || el.offsetWidth || 100);
+  const startHeight = Math.max(28, Number(item.height) || el.offsetHeight || 50);
+  const ratio = startWidth / Math.max(1, startHeight);
+  const preserveRatio = item.type === 'image' || item.type === 'video';
+  const minWidth = item.type === 'note' ? 36 : 70;
+  const minHeight = item.type === 'note' ? 28 : 40;
+
+  const handle = event.currentTarget;
+  handle.setPointerCapture(event.pointerId);
+
+  const onMove = moveEvent => {
+    const dx = moveEvent.clientX - startX;
+    const dy = moveEvent.clientY - startY;
+    let width = Math.max(minWidth, startWidth + dx);
+    let height;
+
+    if (preserveRatio) {
+      const byWidth = width / ratio;
+      const byHeight = Math.max(minHeight, startHeight + dy);
+      if (Math.abs(dx) >= Math.abs(dy)) {
+        height = Math.max(minHeight, byWidth);
+      } else {
+        height = byHeight;
+        width = Math.max(minWidth, height * ratio);
+      }
+    } else {
+      height = Math.max(minHeight, startHeight + dy);
+    }
+
+    item.width = width;
+    item.height = height;
+    el.style.width = `${width}px`;
+    el.style.height = `${height}px`;
+  };
+
+  const onUp = async () => {
+    handle.removeEventListener('pointermove', onMove);
+    handle.removeEventListener('pointerup', onUp);
+    handle.removeEventListener('pointercancel', onUp);
+    await saveLidGeometry(item);
+  };
+
+  handle.addEventListener('pointermove', onMove);
+  handle.addEventListener('pointerup', onUp);
+  handle.addEventListener('pointercancel', onUp);
+}
+
+function beginTextEdit(item, el, editor) {
+  setActiveLid(el);
+  editor.readOnly = false;
+  el.classList.add('editing');
+  editor.focus();
+  editor.setSelectionRange(editor.value.length, editor.value.length);
+}
+
+async function finishTextEdit(item, el, editor, save) {
+  if (editor.readOnly) return;
+  const next = editor.value.trim();
+
+  if (save && next) {
+    const { error } = await supabase
+      .from('board_items')
+      .update({ text: next })
+      .eq('id', item.id)
+      .eq('board', HUSBOND_STORE);
+    if (error) {
+      console.error(error);
+      editor.value = item.text || '';
+      showMessage('could not change lid');
+    } else {
+      item.text = next;
+    }
+  } else {
+    editor.value = item.text || '';
+  }
+
+  editor.readOnly = true;
+  el.classList.remove('editing');
+}
+
+function setActiveLid(el) {
+  if (activeLid && activeLid !== el) activeLid.classList.remove('selected');
+  activeLid = el;
+  if (activeLid) activeLid.classList.add('selected');
+}
+
+async function saveLidGeometry(item) {
   const { error } = await supabase
     .from('board_items')
-    .update({ x: item.x, y: item.y, z: item.z })
+    .update({ x: item.x, y: item.y, width: item.width, height: item.height, z: item.z })
     .eq('id', item.id)
     .eq('board', HUSBOND_STORE);
-  if (error) console.error(error);
+  if (error) {
+    console.error(error);
+    showMessage('could not place lid');
+  }
 }
 
 async function removeLid(item, el) {
   try {
-    if (item.storagePath) {
-      const { error: storageError } = await supabase.storage.from(STORAGE_BUCKET).remove([item.storagePath]);
-      if (storageError) throw storageError;
-    }
     const { error } = await supabase
       .from('board_items')
       .delete()
       .eq('id', item.id)
       .eq('board', HUSBOND_STORE);
     if (error) throw error;
-    dynamicLids = dynamicLids.filter(candidate => candidate.id !== item.id);
+
+    if (item.storagePath) {
+      const { error: storageError } = await supabase.storage.from(STORAGE_BUCKET).remove([item.storagePath]);
+      if (storageError) console.warn(storageError);
+    }
+
+    lids = lids.filter(candidate => candidate.id !== item.id);
+    if (activeLid === el) activeLid = null;
     el.remove();
   } catch (error) {
     console.error(error);
-    showMessage('could not remove lid');
+    showMessage('could not let it go');
   }
+}
+
+function confirmLetGo() {
+  return new Promise(resolve => {
+    document.querySelector('.eskja-confirm')?.remove();
+
+    const shade = document.createElement('div');
+    shade.className = 'eskja-confirm';
+
+    const panel = document.createElement('div');
+    panel.className = 'eskja-confirm-panel';
+
+    const question = document.createElement('div');
+    question.className = 'eskja-confirm-question';
+    question.textContent = 'let this eskja go?';
+
+    const actions = document.createElement('div');
+    actions.className = 'eskja-confirm-actions';
+
+    const keep = document.createElement('button');
+    keep.type = 'button';
+    keep.textContent = 'keep';
+
+    const letGo = document.createElement('button');
+    letGo.type = 'button';
+    letGo.textContent = 'let go';
+
+    const finish = value => {
+      shade.remove();
+      resolve(value);
+    };
+
+    keep.addEventListener('click', () => finish(false));
+    letGo.addEventListener('click', () => finish(true));
+    shade.addEventListener('pointerdown', event => {
+      if (event.target === shade) finish(false);
+    });
+    document.addEventListener('keydown', function escape(event) {
+      if (event.key === 'Escape') {
+        document.removeEventListener('keydown', escape);
+        finish(false);
+      }
+    });
+
+    actions.append(keep, letGo);
+    panel.append(question, actions);
+    shade.appendChild(panel);
+    document.body.appendChild(shade);
+    keep.focus();
+  });
 }
 
 async function createTextLid(text) {
@@ -347,16 +485,16 @@ async function createMediaLid(file) {
   }
 
   const slot = nextLidSlot();
-  const type = isAudio ? 'audio' : isVideo ? 'video' : 'image';
+  const itemType = isAudio ? 'audio' : isVideo ? 'video' : 'image';
 
   const { error } = await supabase.from('board_items').insert({
     id,
     board: HUSBOND_STORE,
     target_board: target,
-    type,
+    type: itemType,
     src: null,
     storage_path: storagePath,
-    text: file.name || type,
+    text: file.name || itemType,
     x: slot.x,
     y: slot.y,
     width,
@@ -372,10 +510,10 @@ async function createMediaLid(file) {
 }
 
 function nextLidSlot() {
-  const count = dynamicLids.length;
+  const count = lids.length;
   const col = count % 4;
   const row = Math.floor(count / 4) % 5;
-  return { x: 120 + col * 180, y: 90 + row * 125 };
+  return { x: 1180 + col * 145, y: 300 + row * 105 };
 }
 
 function makeTargetBoard() {
@@ -403,6 +541,11 @@ function videoSize(src) {
 
 function cleanFilename(value) {
   return String(value).replace(/\.[^.]+$/, '') || 'recording';
+}
+
+function stop(event) {
+  event.preventDefault();
+  event.stopPropagation();
 }
 
 function showMessage(text) {
