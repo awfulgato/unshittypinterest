@@ -1,21 +1,34 @@
 :root {
-  --eskja-open-hand: url('cursor-open.svg') 12 10, grab;
-  --eskja-point-hand: url('cursor-point.svg') 4 16, pointer;
-  --eskja-closed-hand: url('cursor-closed.svg') 12 12, grabbing;
+  /* Restore the original generated Eskja hands. */
+  --eskja-open-hand: url('assets/cursor-open.png') 12 8, default;
+  --eskja-point-hand: url('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAFLUlEQVR4nO2US2xUZRTH/9/97tx7p513Z/oYpVAKQlsQyzMCDakLQ+zGhTMbQjUIQREfMdG4MdMxXbhwAQuVSFRUFDIT5SWlErFF0U6h2CIt9EFLW9ph+pw7d5535j5cmCImVNnb3+47OTn/c873zwEW+L9DAMDn87Fut5uEw2EdgOb3+7X7k3RdJ62trbS2tlb5Z+z8mvHR8UpeMKzlOH5xIiHFnE7nMt7AFefl59kpNbhUVZMScTGq62TYYKDc1PRsbyqZFLKyfOXFl149QB7UVUtLCzs1NaXPvb1erzonevnSxWejMbF6VhTrzKb8VRUrlnPFRUWgBh6CwAFQAIaDklXQ2dmlmiw2arOaMDpyG7qmQTDmIxqN4mZvX/qV197MYwEgcPzrHRxnKLPaLV2sQm/U1NYO3d9Qx8WLJXE5VXfyu+AeTVM3UkqxZHEpnA4rIpEJ7XrPTfAcj4Fbg3pMipJYLM7YrHbcjUQoYQgKHHbMzIoKz/MqZYhutVo6C2y2twCAnDkZeF2S4gc6u66huLgYgmCcLStddIYz5v8h59J3k/FUnSzLzyTicTugoaSkSF25slI35ecx8XiCXO3sIiMjtxEKXcH1nhuYmprR9+7dLa94bMVZq8V8XgNmlEw6VrG6+g6AnCzLqKmpuTcgCXxzpJdSdvnAQL8yPT1Lt29/mspyDh2/d6Go0Il0Og2e51G+tEx1u93EYbcyqqqCEwQUFRYCjAYQIJPIoONqp/bD+QtkcHAwfCzwbRmA3Hzm8/l8jN/v10jw+FfTcSlWIIqizvM82bd/n37w4McqJRoxm82w2uy6y+mgBQUOsmhRKRhqgK4pSKcSUBUFN3v7ISWS4HkB7uJClD7qVsORCXr5SueFY8Hv6hobG7WhoSGtp6fnnqfuNzmbSqUcw6N3EJ2NEndJMXLpNCHQ2bKl5RB4AQBgMPB/OV/JAEQDQDExOYVQ6DLa2kL4rb0DDMPAYjHjqW012Lz5SS0qRguam5v1c+fOKevXrwcAHQ+AlSSJSLE4RCkGwZiHnKJgYnICpvx8GDgD8vOMiMWicLlc0FQdgIacouH28Aj6+vvR+suvKCwswtrqx+Gw2RBPpvSfL7VRVcm+CyAbDAYpAHW+r2BTqRSiYhSjI2PIyDlkswpkWUZkYgKCIGA4kVRdLqceTySJGJNIQpKYiclJ9A0M4sz3TbrNbsWmjeuIwPOQ4pLqdj/Cchzf7nAVt3g8Hur1erX5xAGA1XUokUiEFWMiZkURvX39MBg4nDh1GhvWVcPldFIDZ0A2l0Mo1I7xcBhjY+NqJpMmdpuFcZeUwOV0qnkmCyKRsCYYjTDywnv19fXJQCBAg8HgA1f/9wbSaVaMSUilM4hEJtHWFkLN1s04dPgzZVl5Od20cdNhs8V0Laeq20qXlG2w2e1lT6xZTTmOx+T0TMxhs5koZWlbewiVFRWUgHljz8v7m3w+H+v1epV/EwcAtqDAMWI0GksZMaZns1nmbFMzVq+qVD94v5HVVAV3p2bfeWH33iiAj7q7u7nRW7eqkrnUykxGneSM5m5RnHTxDPP21i1bKkwW07GdO3cdDAQC9GHEAYB8+fknO+R05uiPLT/p09MzxGK26Lt21ROr1dY5Nh4+cuJU04cej4cCUOdO8n/VxDyOny8ZR7/49JDbXfL8+PgYy7IsSzn+tNe74zkAOV3XCSFkriDxeDxMZWUlqaqq0j0ej9bQ0ECqqqqIx+PVGhp81O/3P9TkCyywwAILLLDAHH8CvmRpGgGYHswAAAAASUVORK5CYII=') 30 8, pointer;
+  --eskja-closed-hand: url('assets/cursor-grab.png') 14 10, grabbing;
 }
 
-/* Main physical grammar. Direct text editing and resize handles may override. */
+/* Default: the open Eskja hand everywhere physical. */
 body[data-nav="husbond"],
 body[data-nav="husbond"] .nav-canvas,
 .board-page,
-#board {
-  cursor: var(--eskja-open-hand);
+#board,
+.storeskja-add,
+.board-page .image-item,
+.board-page .note-item,
+.board-page .media-item,
+.board-page .note-text:not(.editing) {
+  cursor: var(--eskja-open-hand) !important;
 }
 
-body[data-nav="husbond"] .storeskja-lid {
-  cursor: var(--eskja-point-hand);
+/* A lid is a doorway until the user deliberately opens edit mode. */
+body[data-nav="husbond"] .storeskja-lid:not(.lid-edit-mode):not(.editing) {
+  cursor: var(--eskja-point-hand) !important;
 }
 
+/* Once edit mode is open, the lid is being handled rather than entered. */
+body[data-nav="husbond"] .storeskja-lid.lid-edit-mode {
+  cursor: var(--eskja-open-hand) !important;
+}
+
+/* Physical movement is the closed hand. */
 body[data-nav="husbond"] .storeskja-lid.moving,
 body[data-nav="husbond"] .storeskja-lid.placing,
 .board-page .image-item.dragging,
@@ -26,12 +39,11 @@ body[data-nav="husbond"] .storeskja-lid.placing,
 
 body[data-nav="husbond"].placing-lid,
 body[data-nav="husbond"].placing-lid .nav-canvas {
-  cursor: var(--eskja-closed-hand);
+  cursor: var(--eskja-closed-hand) !important;
 }
 
-.board-page .image-item,
-.board-page .note-item,
-.board-page .media-item,
-.board-page .note-text:not(.editing) {
-  cursor: var(--eskja-open-hand);
+/* Actual typing remains a text operation. */
+.storeskja-lid.editing .storeskja-lid-text,
+.board-page .note-text.editing {
+  cursor: text !important;
 }
