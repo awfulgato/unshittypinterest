@@ -1,0 +1,25 @@
+/* Functional media pass.
+   Keep this intentionally plain; the audio/video skin gets its own pass after
+   upload, persistence, playback, resize, delete, and reload are proven. */
+
+.media-item {
+  transition: opacity .11s ease;
+}
+
+.media-item.dragging {
+  opacity: .82;
+}
+
+.media-item.selected .image-controls {
+  opacity: 1;
+  visibility: visible;
+}
+
+.media-item.selected > .resize-handle {
+  display: block;
+}
+
+.media-item .delete-control,
+.media-item .gray-wrap {
+  pointer-events: auto;
+}
