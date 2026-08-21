@@ -26,15 +26,6 @@ body[data-nav="wyf"] .storeskja-actions { display: none; }
 .storeskja-add:hover { color: #bbb; }
 .storeskja-add input { display: none; }
 
-.husbond-static {
-  position: absolute;
-  color: #666;
-  text-decoration: none;
-  font: 15px/1 Arial, Helvetica, sans-serif;
-  transition: color .12s ease;
-}
-.husbond-static:hover { color: #999; }
-
 .storeskja-lid {
   position: absolute;
   display: block;
@@ -51,21 +42,36 @@ body[data-nav="wyf"] .storeskja-actions { display: none; }
 .storeskja-lid video {
   display: block;
   width: 100%;
-  height: auto;
-  max-height: 100%;
+  height: 100%;
   object-fit: contain;
   pointer-events: none;
+  user-select: none;
 }
 
 .storeskja-lid-text {
+  display: block;
   width: 100%;
   height: 100%;
-  display: flex;
-  align-items: center;
-  color: #ddd;
-  font: 17px/1.2 Georgia, 'Times New Roman', serif;
+  margin: 0;
+  padding: 2px;
+  resize: none;
+  overflow: hidden;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: #aaa;
+  font: 16px/1.2 Georgia, 'Times New Roman', serif;
+  text-align: center;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
+  cursor: default;
+  user-select: none;
+}
+
+.storeskja-lid.editing .storeskja-lid-text {
+  color: #ddd;
+  cursor: text;
+  user-select: text;
 }
 
 .storeskja-lid-audio {
@@ -84,27 +90,107 @@ body[data-nav="wyf"] .storeskja-actions { display: none; }
   color: #ddd;
 }
 
-.lid-remove {
+.lid-controls {
   position: absolute;
-  top: -17px;
-  right: -2px;
+  top: -19px;
+  right: -1px;
   display: none;
+  align-items: center;
+  gap: 5px;
+  height: 17px;
+}
+
+.storeskja-lid:hover .lid-controls,
+.storeskja-lid.selected .lid-controls,
+.storeskja-lid.editing .lid-controls {
+  display: flex;
+}
+
+.lid-control {
   border: 0;
   padding: 0;
+  margin: 0;
+  width: 16px;
+  height: 16px;
   background: transparent;
   color: #666;
-  font: 17px/16px Arial, Helvetica, sans-serif;
+  font: 16px/16px Arial, Helvetica, sans-serif;
   cursor: pointer;
 }
 
-.storeskja-lid:hover .lid-remove { display: block; }
+.lid-edit { font-size: 14px; }
+.lid-control:hover { color: #aaa; }
 .lid-remove:hover { color: #d55; }
+
+.lid-resize {
+  position: absolute;
+  right: -5px;
+  bottom: -5px;
+  width: 11px;
+  height: 11px;
+  display: none;
+  border: 1px solid #666;
+  background: #000;
+  cursor: nwse-resize;
+}
+
+.storeskja-lid:hover .lid-resize,
+.storeskja-lid.selected .lid-resize,
+.storeskja-lid.editing .lid-resize {
+  display: block;
+}
 
 .storeskja-message {
   position: fixed;
   left: 42px;
   bottom: 14px;
+  z-index: 100001;
   color: #666;
   font: 11px/1 Arial, Helvetica, sans-serif;
   pointer-events: none;
+}
+
+.eskja-confirm {
+  position: fixed;
+  inset: 0;
+  z-index: 200000;
+  display: grid;
+  place-items: center;
+  background: rgba(0,0,0,.72);
+}
+
+.eskja-confirm-panel {
+  min-width: 250px;
+  padding: 22px 24px 18px;
+  background: #050505;
+  border: 1px solid #292929;
+  color: #bbb;
+  font-family: Georgia, 'Times New Roman', serif;
+}
+
+.eskja-confirm-question {
+  margin-bottom: 20px;
+  font-size: 17px;
+  line-height: 1.2;
+}
+
+.eskja-confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 18px;
+}
+
+.eskja-confirm-actions button {
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: #777;
+  font: 13px/1 Arial, Helvetica, sans-serif;
+  cursor: pointer;
+}
+
+.eskja-confirm-actions button:hover,
+.eskja-confirm-actions button:focus {
+  color: #bbb;
+  outline: none;
 }
