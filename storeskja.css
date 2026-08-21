@@ -20,6 +20,11 @@ body[data-nav="husbond"].placing-lid .nav-canvas {
   cursor: grabbing;
 }
 
+body.placing-lid .storeskja-actions {
+  pointer-events: none;
+  opacity: .28;
+}
+
 .storeskja-add {
   width: 18px;
   height: 18px;
