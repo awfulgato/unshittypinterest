@@ -1,0 +1,110 @@
+.storeskja-actions {
+  position: fixed;
+  z-index: 100000;
+  left: 13px;
+  bottom: 12px;
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+body[data-nav="wyf"] .storeskja-actions { display: none; }
+
+.storeskja-add {
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  margin: 0;
+  border: 0;
+  background: transparent;
+  color: #888;
+  font: 18px/18px Arial, Helvetica, sans-serif;
+  text-align: center;
+  cursor: pointer;
+}
+
+.storeskja-add:hover { color: #bbb; }
+.storeskja-add input { display: none; }
+
+.husbond-static {
+  position: absolute;
+  color: #666;
+  text-decoration: none;
+  font: 15px/1 Arial, Helvetica, sans-serif;
+  transition: color .12s ease;
+}
+.husbond-static:hover { color: #999; }
+
+.storeskja-lid {
+  position: absolute;
+  display: block;
+  min-width: 36px;
+  min-height: 28px;
+  color: #ddd;
+  user-select: none;
+  touch-action: none;
+  cursor: default;
+  z-index: 10;
+}
+
+.storeskja-lid img,
+.storeskja-lid video {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-height: 100%;
+  object-fit: contain;
+  pointer-events: none;
+}
+
+.storeskja-lid-text {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  color: #ddd;
+  font: 17px/1.2 Georgia, 'Times New Roman', serif;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.storeskja-lid-audio {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #aaa;
+  border-bottom: 1px solid #555;
+  font: 13px/1.2 Arial, Helvetica, sans-serif;
+}
+
+.storeskja-lid-audio .mark {
+  font: 20px/1 Georgia, serif;
+  color: #ddd;
+}
+
+.lid-remove {
+  position: absolute;
+  top: -17px;
+  right: -2px;
+  display: none;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: #666;
+  font: 17px/16px Arial, Helvetica, sans-serif;
+  cursor: pointer;
+}
+
+.storeskja-lid:hover .lid-remove { display: block; }
+.lid-remove:hover { color: #d55; }
+
+.storeskja-message {
+  position: fixed;
+  left: 42px;
+  bottom: 14px;
+  color: #666;
+  font: 11px/1 Arial, Helvetica, sans-serif;
+  pointer-events: none;
+}
