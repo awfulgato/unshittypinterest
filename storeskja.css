@@ -10,17 +10,8 @@
 
 body[data-nav="wyf"] .storeskja-actions { display: none; }
 
-body[data-nav="husbond"],
-body[data-nav="husbond"] .nav-canvas {
-  cursor: grab;
-}
-
-body[data-nav="husbond"].placing-lid,
-body[data-nav="husbond"].placing-lid .nav-canvas {
-  cursor: grabbing;
-}
-
-body.placing-lid .storeskja-actions {
+body.placing-lid .storeskja-actions,
+body.writing-lid .storeskja-actions {
   pointer-events: none;
   opacity: .28;
 }
@@ -35,7 +26,7 @@ body.placing-lid .storeskja-actions {
   color: #888;
   font: 18px/18px Arial, Helvetica, sans-serif;
   text-align: center;
-  cursor: pointer;
+  cursor: var(--eskja-open-hand, pointer);
 }
 
 .storeskja-add:hover { color: #bbb; }
@@ -49,7 +40,6 @@ body.placing-lid .storeskja-actions {
   color: #ddd;
   user-select: none;
   touch-action: none;
-  cursor: pointer;
   z-index: 10;
   transition: filter .08s ease, opacity .08s ease, transform .08s ease;
 }
@@ -59,7 +49,6 @@ body.placing-lid .storeskja-actions {
 }
 
 .storeskja-lid.moving {
-  cursor: grabbing;
   opacity: .82;
   transform: scale(1.012);
   filter: brightness(1.12);
@@ -67,7 +56,6 @@ body.placing-lid .storeskja-actions {
 
 .storeskja-lid.placing {
   pointer-events: none;
-  cursor: grabbing;
   opacity: .72;
   transform: scale(1.018);
   filter: brightness(1.18);
@@ -99,7 +87,7 @@ body.placing-lid .storeskja-actions {
   text-align: center;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
-  cursor: pointer;
+  cursor: inherit;
   user-select: none;
 }
 
@@ -136,6 +124,7 @@ body.placing-lid .storeskja-actions {
   height: 17px;
 }
 
+.storeskja-lid:hover .lid-controls,
 .storeskja-lid.selected .lid-controls,
 .storeskja-lid.editing .lid-controls {
   display: flex;
@@ -150,7 +139,7 @@ body.placing-lid .storeskja-actions {
   background: transparent;
   color: #666;
   font: 16px/16px Arial, Helvetica, sans-serif;
-  cursor: pointer;
+  cursor: var(--eskja-open-hand, pointer);
 }
 
 .lid-edit { font-size: 14px; }
@@ -169,9 +158,36 @@ body.placing-lid .storeskja-actions {
   cursor: nwse-resize;
 }
 
+.storeskja-lid:hover .lid-resize,
 .storeskja-lid.selected .lid-resize,
 .storeskja-lid.editing .lid-resize {
   display: block;
+}
+
+.lid-composer {
+  position: fixed;
+  left: 42px;
+  bottom: 10px;
+  z-index: 160000;
+  width: 240px;
+  min-height: 34px;
+}
+
+.lid-composer textarea {
+  display: block;
+  width: 100%;
+  min-height: 34px;
+  max-height: 180px;
+  margin: 0;
+  padding: 3px 4px;
+  resize: none;
+  overflow: hidden;
+  border: 0;
+  border-bottom: 1px solid #555;
+  outline: 0;
+  background: #000;
+  color: #ddd;
+  font: 16px/1.25 Georgia, 'Times New Roman', serif;
 }
 
 .storeskja-message {
@@ -221,7 +237,7 @@ body.placing-lid .storeskja-actions {
   background: transparent;
   color: #777;
   font: 13px/1 Arial, Helvetica, sans-serif;
-  cursor: pointer;
+  cursor: var(--eskja-open-hand, pointer);
 }
 
 .eskja-confirm-actions button:hover,
