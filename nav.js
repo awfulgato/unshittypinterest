@@ -7,9 +7,12 @@ if (!home) throw new Error('storeskja canvas missing');
 
 const type = home.dataset.nav;
 const HUSBOND_STORE = 'storeskja-husbond';
+const HOLD_TO_EDIT_MS = 430;
 let lids = [];
 let zCounter = 100;
 let activeLid = null;
+let placingLid = null;
+let lastPointer = { x: window.innerWidth / 2, y: window.innerHeight / 2 };
 
 const rune = {
   'whaleroad':'ᚹᚺᚨᛚᛖᚱᚨᛟᛞ',
@@ -18,6 +21,10 @@ const rune = {
   'river':'ᚱᛁᚹᛖᚱ',
   'rafn':'ᚱᚨᚠᚾ'
 };
+
+document.addEventListener('pointermove', event => {
+  lastPointer = { x: event.clientX, y: event.clientY };
+}, { passive: true });
 
 if (type === 'husbond') {
   wireHusbondActions();
@@ -29,7 +36,10 @@ if (type === 'husbond') {
 
 function wireCanvasSelection() {
   document.addEventListener('pointerdown', event => {
-    if (!event.target.closest('.storeskja-lid') && !event.target.closest('.eskja-confirm')) {
+    if (placingLid) return;
+    if (!event.target.closest('.storeskja-lid') &&
+        !event.target.closest('.eskja-confirm') &&
+        !event.target.closest('.storeskja-actions')) {
       setActiveLid(null);
     }
   });
@@ -44,21 +54,23 @@ function wireHusbondActions() {
     input.value = '';
     for (const file of files) {
       try {
-        await createMediaLid(file);
+        const id = await createMediaLid(file);
+        await loadLids();
+        await beginPlacement(id);
       } catch (error) {
         console.error(error);
         showMessage('could not add lid');
       }
     }
-    await loadLids();
   });
 
   textButton?.addEventListener('click', async () => {
     const text = window.prompt('');
     if (!String(text || '').trim()) return;
     try {
-      await createTextLid(String(text).trim());
+      const id = await createTextLid(String(text).trim());
       await loadLids();
+      await beginPlacement(id);
     } catch (error) {
       console.error(error);
       showMessage('could not add lid');
@@ -68,6 +80,7 @@ function wireHusbondActions() {
 
 async function loadLids() {
   home.querySelectorAll('.storeskja-lid').forEach(node => node.remove());
+  activeLid = null;
 
   const { data, error } = await supabase
     .from('board_items')
@@ -183,7 +196,7 @@ function renderLid(item) {
     if (event.button !== 0) return;
     if (event.target.closest('.lid-control') || event.target.closest('.lid-resize')) return;
     if (textEditor && !textEditor.readOnly) return;
-    beginMoveOrEnter(event, item, el);
+    beginMoveEnterOrSelect(event, item, el);
   });
 
   if (textEditor) {
@@ -207,24 +220,40 @@ function renderLid(item) {
   home.appendChild(el);
 }
 
-function beginMoveOrEnter(event, item, el) {
+function beginMoveEnterOrSelect(event, item, el) {
   event.preventDefault();
-  setActiveLid(el);
 
   const startX = event.clientX;
   const startY = event.clientY;
   const originX = Number(item.x) || 80;
   const originY = Number(item.y) || 80;
   let moved = false;
+  let held = false;
+  let cancelled = false;
 
   item.z = ++zCounter;
   el.style.zIndex = String(item.z);
   el.setPointerCapture(event.pointerId);
 
+  const holdTimer = window.setTimeout(() => {
+    if (moved || cancelled) return;
+    held = true;
+    el.classList.add('held');
+    setActiveLid(el);
+  }, HOLD_TO_EDIT_MS);
+
   const onMove = moveEvent => {
     const dx = moveEvent.clientX - startX;
     const dy = moveEvent.clientY - startY;
-    if (Math.hypot(dx, dy) > 4) moved = true;
+
+    if (!moved && Math.hypot(dx, dy) > 5) {
+      moved = true;
+      window.clearTimeout(holdTimer);
+      el.classList.remove('held');
+      el.classList.add('moving');
+      setActiveLid(null);
+    }
+
     if (!moved) return;
     item.x = Math.max(0, originX + dx);
     item.y = Math.max(0, originY + dy);
@@ -232,21 +261,98 @@ function beginMoveOrEnter(event, item, el) {
     el.style.top = `${item.y}px`;
   };
 
-  const onUp = async () => {
+  const cleanup = () => {
+    window.clearTimeout(holdTimer);
     el.removeEventListener('pointermove', onMove);
     el.removeEventListener('pointerup', onUp);
-    el.removeEventListener('pointercancel', onUp);
+    el.removeEventListener('pointercancel', onCancel);
+    el.classList.remove('moving', 'held');
+  };
 
+  const onUp = async () => {
+    cleanup();
     if (moved) {
       await saveLidGeometry(item);
+    } else if (held) {
+      setActiveLid(el);
     } else if (item.target_board) {
       window.location.href = `board.html?board=${encodeURIComponent(item.target_board)}`;
     }
   };
 
+  const onCancel = () => {
+    cancelled = true;
+    cleanup();
+  };
+
   el.addEventListener('pointermove', onMove);
   el.addEventListener('pointerup', onUp);
-  el.addEventListener('pointercancel', onUp);
+  el.addEventListener('pointercancel', onCancel);
+}
+
+async function beginPlacement(itemId) {
+  const item = lids.find(candidate => candidate.id === itemId);
+  const el = item ? home.querySelector(`.storeskja-lid[data-id="${CSS.escape(itemId)}"]`) : null;
+  if (!item || !el) return;
+
+  setActiveLid(null);
+  item.z = ++zCounter;
+  el.style.zIndex = String(item.z);
+  el.classList.add('placing');
+  document.body.classList.add('placing-lid');
+  placingLid = { item, el };
+
+  const moveTo = (clientX, clientY) => {
+    const width = Math.max(36, Number(item.width) || el.offsetWidth || 100);
+    const height = Math.max(28, Number(item.height) || el.offsetHeight || 50);
+    item.x = Math.max(0, clientX - width / 2);
+    item.y = Math.max(0, clientY - height / 2);
+    el.style.left = `${item.x}px`;
+    el.style.top = `${item.y}px`;
+  };
+
+  moveTo(lastPointer.x, lastPointer.y);
+
+  return new Promise(resolve => {
+    const onMove = event => {
+      lastPointer = { x: event.clientX, y: event.clientY };
+      moveTo(event.clientX, event.clientY);
+    };
+
+    const cleanup = () => {
+      document.removeEventListener('pointermove', onMove, true);
+      document.removeEventListener('pointerdown', onPlace, true);
+      document.removeEventListener('keydown', onKey, true);
+      el.classList.remove('placing');
+      document.body.classList.remove('placing-lid');
+      placingLid = null;
+    };
+
+    const finish = async () => {
+      cleanup();
+      await saveLidGeometry(item);
+      resolve();
+    };
+
+    const onPlace = event => {
+      if (event.button !== 0) return;
+      if (event.target.closest('.storeskja-actions')) return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      moveTo(event.clientX, event.clientY);
+      finish();
+    };
+
+    const onKey = event => {
+      if (event.key !== 'Escape') return;
+      event.preventDefault();
+      finish();
+    };
+
+    document.addEventListener('pointermove', onMove, true);
+    document.addEventListener('pointerdown', onPlace, true);
+    document.addEventListener('keydown', onKey, true);
+  });
 }
 
 function beginResize(event, item, el) {
@@ -402,7 +508,12 @@ function confirmLetGo() {
     letGo.type = 'button';
     letGo.textContent = 'let go';
 
+    const escape = event => {
+      if (event.key === 'Escape') finish(false);
+    };
+
     const finish = value => {
+      document.removeEventListener('keydown', escape);
       shade.remove();
       resolve(value);
     };
@@ -412,12 +523,7 @@ function confirmLetGo() {
     shade.addEventListener('pointerdown', event => {
       if (event.target === shade) finish(false);
     });
-    document.addEventListener('keydown', function escape(event) {
-      if (event.key === 'Escape') {
-        document.removeEventListener('keydown', escape);
-        finish(false);
-      }
-    });
+    document.addEventListener('keydown', escape);
 
     actions.append(keep, letGo);
     panel.append(question, actions);
@@ -450,6 +556,7 @@ async function createTextLid(text) {
     z: ++zCounter
   });
   if (error) throw error;
+  return id;
 }
 
 async function createMediaLid(file) {
@@ -507,6 +614,7 @@ async function createMediaLid(file) {
     await supabase.storage.from(STORAGE_BUCKET).remove([storagePath]);
     throw error;
   }
+  return id;
 }
 
 function nextLidSlot() {
