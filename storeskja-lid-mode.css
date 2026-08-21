@@ -1,0 +1,80 @@
+/* Storeskja lid editing is deliberately a second step.
+   Hover stays about entering; one small pencil opens the tool state. */
+
+.storeskja-lid .lid-controls,
+.storeskja-lid .lid-resize {
+  display: none !important;
+}
+
+.storeskja-lid.lid-edit-mode .lid-controls,
+.storeskja-lid.lid-edit-mode .lid-resize,
+.storeskja-lid.editing .lid-controls,
+.storeskja-lid.editing .lid-resize {
+  display: flex !important;
+}
+
+.storeskja-lid.lid-edit-mode .lid-resize,
+.storeskja-lid.editing .lid-resize {
+  display: block !important;
+}
+
+.lid-mode-toggle {
+  position: absolute;
+  top: -17px;
+  right: -1px;
+  z-index: 3;
+  display: none;
+  width: 15px;
+  height: 15px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #555;
+  cursor: var(--eskja-open-hand, default);
+}
+
+.lid-mode-toggle svg {
+  display: block;
+  width: 15px;
+  height: 15px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.1;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.storeskja-lid:hover:not(.lid-edit-mode):not(.editing) > .lid-mode-toggle {
+  display: block;
+}
+
+.lid-mode-toggle:hover {
+  color: #aaa;
+}
+
+.storeskja-lid.lid-edit-mode {
+  cursor: var(--eskja-open-hand, default) !important;
+  box-shadow: 0 0 0 1px rgba(170,170,170,.16);
+}
+
+.storeskja-lid.lid-edit-mode > .lid-mode-toggle,
+.storeskja-lid.editing > .lid-mode-toggle {
+  display: none;
+}
+
+.storeskja-lid.lid-edit-mode .lid-controls {
+  top: -19px;
+  right: -1px;
+}
+
+/* Controls are tools, not entrances. */
+.storeskja-lid.lid-edit-mode .lid-control,
+.storeskja-lid.lid-edit-mode .lid-resize {
+  cursor: var(--eskja-open-hand, default);
+}
+
+/* Only active text editing leaves the hand grammar. */
+.storeskja-lid.editing .storeskja-lid-text {
+  cursor: text !important;
+}
